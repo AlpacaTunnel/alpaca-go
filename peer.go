@@ -12,7 +12,7 @@ const MAX_ID = 65535
 
 type Peer struct {
 	ID    int
-	PSK   string
+	PSK   [AES_BLOCK_SIZE]byte
 	Addrs []PeerAddr
 }
 
@@ -68,7 +68,7 @@ func getPeer(line string) *Peer {
 
 	p := Peer{
 		ID:  IdPton(fields[0]),
-		PSK: fields[1],
+		PSK: TruncateKey(fields[1]),
 	}
 
 	if p.ID == 0 {

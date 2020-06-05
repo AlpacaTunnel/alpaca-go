@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const AES_BLOCK_SIZE = 16
+
 // convert 1.1 to 257
 func IdPton(idStr string) int {
 	len := len(strings.Split(idStr, "."))
@@ -28,4 +30,18 @@ func IdPton(idStr string) int {
 	}
 
 	return intA*256 + intB
+}
+
+func TruncateKey(key string) [AES_BLOCK_SIZE]byte {
+	s := []byte(key)
+	var b [AES_BLOCK_SIZE]byte
+	copy(b[:], s)
+	return b
+}
+
+func MaxInt(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
 }

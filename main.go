@@ -92,7 +92,11 @@ func main() {
 		Config:   conf,
 		PeerPool: pool,
 	}
-	vpn.InitCtx()
+	err = vpn.InitCtx()
+	if err != nil {
+		log.Error("Error init VPN: %v\n", err)
+		return
+	}
 
 	_, tunFd, err := OpenTun(conf.Name)
 	if err != nil {

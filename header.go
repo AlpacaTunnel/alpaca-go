@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const HEADER_LEN = 16
+const HEADER_LEN = AES_BLOCK_SIZE
 
 // TODO: each peer should use its own sequence var
 var GLOBAL_SEQUENCE uint32
