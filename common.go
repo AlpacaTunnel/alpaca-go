@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"strconv"
 	"strings"
 )
@@ -50,4 +51,13 @@ func GetPsk(pool []Peer, h *Header) []byte {
 	biggerId := MaxInt(int(h.DstID), int(h.SrcID))
 	psk := pool[biggerId].PSK
 	return psk[:]
+}
+
+func DeriveKey(psk, group, nonce []byte) []byte {
+	buf := make([]byte, 48)
+	copy(buf, psk)
+	copy(buf[AES_BLOCK_SIZE:], group)
+	copy(buf[AES_BLOCK_SIZE*2:], nonce)
+	key := sha256.Sum256(buf)
+	return key[:]
 }

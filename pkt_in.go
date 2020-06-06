@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/sha256"
 	"net"
 
 	"golang.org/x/crypto/chacha20poly1305"
@@ -55,8 +54,10 @@ func (pkt *PktIn) Process() {
 }
 
 func (pkt *PktIn) chacha20Decrypt() {
+	nonce := pkt.InnerBuffer[4:16]
+
 	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
-	key := sha256.Sum256(psk)
+	key := DeriveKey(psk, pkt.Vpn.GroupPSK[:], nonce)
 
 	aead, err := chacha20poly1305.New(key[:])
 	if err != nil {
@@ -64,8 +65,6 @@ func (pkt *PktIn) chacha20Decrypt() {
 		pkt.Valid = false
 		return
 	}
-
-	nonce := pkt.InnerBuffer[4:16]
 
 	cipherBody := pkt.UdpBuffer[HEADER_LEN : HEADER_LEN+int(pkt.h.Length)+aead.Overhead()]
 
