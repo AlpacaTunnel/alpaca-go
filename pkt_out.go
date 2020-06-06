@@ -3,7 +3,10 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/sha256"
 	"net"
+
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 type PktOut struct {
@@ -56,26 +59,54 @@ func (pkt *PktOut) Process() {
 
 	pkt.Vpn.GroupCipher.Encrypt(pkt.OutterBuffer, h.ToNetwork())
 
-	aesBlockLen := pkt.encryptBody()
+	// Benchmarks:
+	// bodyLen := pkt.aesEncrypt() // 210 Mbps
+	// bodyLen := pkt.xorBody() // 460 Mbps
+	bodyLen := pkt.chacha20Encrypt() // 390 Mbps
 
-	pkt.UdpBuffer = pkt.OutterBuffer[:HEADER_LEN+aesBlockLen]
+	pkt.UdpBuffer = pkt.OutterBuffer[:HEADER_LEN+bodyLen]
 }
 
-func (pkt *PktOut) encryptBody() uint16 {
-	h := &pkt.h
+func (pkt *PktOut) chacha20Encrypt() uint16 {
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+	key := sha256.Sum256(psk)
 
-	biggerId := MaxInt(int(h.DstID), int(h.SrcID))
-	psk := pkt.Vpn.PeerPool[biggerId].PSK
+	aead, err := chacha20poly1305.New(key[:])
+	if err != nil {
+		log.Warning("Error new chacha20: %v\n", err)
+		pkt.Valid = false
+		return 0
+	}
 
-	block, err := aes.NewCipher(psk[:])
+	nonce := pkt.h.ToNetwork()[4:16]
+
+	aead.Seal(pkt.OutterBuffer[:HEADER_LEN], nonce, pkt.TunBuffer[:pkt.h.Length], nil)
+
+	return pkt.h.Length + uint16(aead.Overhead())
+}
+
+func (pkt *PktOut) xorBody() uint16 {
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+
+	for i := 0; i < int(pkt.h.Length); i++ {
+		pkt.OutterBuffer[HEADER_LEN+i] = pkt.TunBuffer[i] ^ psk[i%AES_BLOCK_SIZE]
+	}
+
+	return pkt.h.Length
+}
+
+func (pkt *PktOut) aesEncrypt() uint16 {
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+
+	block, err := aes.NewCipher(psk)
 	if err != nil {
 		pkt.Valid = false
 		return 0
 	}
 
-	mode := cipher.NewCBCEncrypter(block, h.ToNetwork())
+	mode := cipher.NewCBCEncrypter(block, pkt.h.ToNetwork())
 
-	aesBlockLen := ((h.Length + 15) / 16) * 16
+	aesBlockLen := ((pkt.h.Length + 15) / 16) * 16
 
 	mode.CryptBlocks(
 		pkt.OutterBuffer[HEADER_LEN:],

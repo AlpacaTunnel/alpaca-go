@@ -3,7 +3,10 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/sha256"
 	"net"
+
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 type PktIn struct {
@@ -44,26 +47,56 @@ func (pkt *PktIn) Process() {
 	}
 	log.Debug("%+v\n", h)
 
-	pkt.decryptBody()
+	// pkt.aesDecrypt()
+	// pkt.xorBody()
+	pkt.chacha20Decrypt()
 
 	pkt.TunBuffer = pkt.InnerBuffer[HEADER_LEN : HEADER_LEN+h.Length]
 }
 
-func (pkt *PktIn) decryptBody() {
-	h := &pkt.h
+func (pkt *PktIn) chacha20Decrypt() {
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+	key := sha256.Sum256(psk)
 
-	biggerId := MaxInt(int(h.DstID), int(h.SrcID))
-	psk := pkt.Vpn.PeerPool[biggerId].PSK
+	aead, err := chacha20poly1305.New(key[:])
+	if err != nil {
+		log.Warning("Error new chacha20: %v\n", err)
+		pkt.Valid = false
+		return
+	}
 
-	block, err := aes.NewCipher(psk[:])
+	nonce := pkt.InnerBuffer[4:16]
+
+	cipherBody := pkt.UdpBuffer[HEADER_LEN : HEADER_LEN+int(pkt.h.Length)+aead.Overhead()]
+
+	_, err = aead.Open(pkt.InnerBuffer[:HEADER_LEN], nonce, cipherBody, nil)
+	if err != nil {
+		log.Debug("Error open chacha20: %v\n", err)
+		pkt.Valid = false
+		return
+	}
+}
+
+func (pkt *PktIn) xorBody() {
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+
+	for i := 0; i < int(pkt.h.Length); i++ {
+		pkt.InnerBuffer[HEADER_LEN+i] = pkt.UdpBuffer[HEADER_LEN+i] ^ psk[i%AES_BLOCK_SIZE]
+	}
+}
+
+func (pkt *PktIn) aesDecrypt() {
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+
+	block, err := aes.NewCipher(psk)
 	if err != nil {
 		pkt.Valid = false
 		return
 	}
 
-	mode := cipher.NewCBCDecrypter(block, h.ToNetwork())
+	mode := cipher.NewCBCDecrypter(block, pkt.h.ToNetwork())
 
-	aesBlockLen := ((h.Length + 15) / 16) * 16
+	aesBlockLen := ((pkt.h.Length + 15) / 16) * 16
 
 	mode.CryptBlocks(
 		pkt.InnerBuffer[HEADER_LEN:],
