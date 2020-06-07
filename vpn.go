@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"net"
 )
 
 const (
@@ -16,10 +17,11 @@ type VPNCtx struct {
 	GroupPSK    [16]byte
 	GroupCipher cipher.Block
 	Config      Config
-	MyID        int
-	Gateway     int
-	Network     int
+	MyID        uint16
+	Gateway     uint16
+	Network     uint32
 	PeerPool    []Peer
+	Forwarders  []uint16
 }
 
 func (v *VPNCtx) InitCtx() error {
@@ -32,7 +34,30 @@ func (v *VPNCtx) InitCtx() error {
 	v.GroupCipher = cipher
 	v.MyID = IdPton(v.Config.Id)
 	v.Gateway = IdPton(v.Config.Gateway)
-	v.Network = IdPton(v.Config.Net) << 16
+	v.Network = uint32(IdPton(v.Config.Net)) << 16
+
+	v.Forwarders = make([]uint16, 0, MAX_ADDR)
+	for _, forwarder := range v.Config.Forwarders {
+		v.Forwarders = append(v.Forwarders, IdPton(forwarder))
+	}
 
 	return nil
+}
+
+func (v *VPNCtx) GetDstAddrs(srcId, dstId uint16) []*net.UDPAddr {
+	if srcId < dstId {
+		return v.PeerPool[dstId].GetAddr(false, v.Config.InactiveDownwardStatic)
+	}
+
+	if len(v.Forwarders) == 0 {
+		return v.PeerPool[dstId].GetAddr(true, false)
+	}
+
+	dstAddrs := make([]*net.UDPAddr, 0, MAX_ADDR*2)
+	for _, fId := range v.Forwarders {
+		addrs := v.PeerPool[fId].GetAddr(true, false)
+		dstAddrs = append(dstAddrs, addrs...)
+	}
+
+	return dstAddrs
 }

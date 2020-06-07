@@ -19,7 +19,7 @@ import (
 
 var log = Logger{Level: LevelDebug}
 
-func tun2Sock(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
+func workerSend(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
 	pkt := PktOut{
 		Vpn: vpn,
 	}
@@ -29,7 +29,7 @@ func tun2Sock(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
 	for {
 		pkt.InnerLen, err = tunFd.Read(pkt.TunBuffer)
 		if err != nil {
-			log.Info("error read: %v\n", err)
+			log.Warning("error read: %v\n", err)
 		}
 
 		pkt.Process()
@@ -38,14 +38,16 @@ func tun2Sock(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
 			continue
 		}
 
-		_, err = conn.WriteToUDP(pkt.UdpBuffer, &pkt.DstAddr)
-		if err != nil {
-			log.Info("error send: %v\n", err)
+		for _, addr := range pkt.DstAddrs {
+			_, err = conn.WriteToUDP(pkt.UdpBuffer, addr)
+			if err != nil {
+				log.Warning("error send: %v\n", err)
+			}
 		}
 	}
 }
 
-func sock2Tun(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
+func workerRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
 	pkt := PktIn{
 		Vpn: vpn,
 	}
@@ -54,10 +56,10 @@ func sock2Tun(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
 	for {
 		length, addr, err := conn.ReadFromUDP(pkt.UdpBuffer)
 		if err != nil {
-			log.Info("error recv: %v\n", err)
+			log.Warning("error recv: %v\n", err)
 		}
 		pkt.OutterLen = length
-		pkt.Addr = addr
+		pkt.SrcAddr = addr
 
 		pkt.Process()
 
@@ -65,9 +67,19 @@ func sock2Tun(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
 			continue
 		}
 
+		if pkt.Action == ActionForward {
+			for _, addr := range pkt.DstAddrs {
+				_, err = conn.WriteToUDP(pkt.UdpBuffer[:length], addr)
+				if err != nil {
+					log.Warning("error send: %v\n", err)
+				}
+			}
+			continue
+		}
+
 		_, err = tunFd.Write(pkt.TunBuffer)
 		if err != nil {
-			log.Info("error write: %v\n", err)
+			log.Warning("error write: %v\n", err)
 		}
 	}
 }
@@ -115,8 +127,8 @@ func main() {
 		return
 	}
 
-	go tun2Sock(tunFd, conn, &vpn)
-	go sock2Tun(tunFd, conn, &vpn)
+	go workerSend(tunFd, conn, &vpn)
+	go workerRecv(tunFd, conn, &vpn)
 
 	for {
 		time.Sleep(time.Second)

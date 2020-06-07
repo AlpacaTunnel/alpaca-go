@@ -47,6 +47,5 @@ func UpdateTimestampSeq() {
 	} else {
 		TIMESTAMP = now
 		GLOBAL_SEQUENCE = 0
-
 	}
 }

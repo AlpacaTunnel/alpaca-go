@@ -8,6 +8,11 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
+const (
+	ActionForward = 1
+	ActionWrite   = 2
+)
+
 type PktIn struct {
 	OutterLen   int
 	UdpBuffer   []byte
@@ -15,8 +20,10 @@ type PktIn struct {
 	TunBuffer   []byte
 	Vpn         *VPNCtx
 	Valid       bool
-	Addr        *net.UDPAddr
+	SrcAddr     *net.UDPAddr
+	DstAddrs    []*net.UDPAddr
 	h           Header
+	Action      int
 }
 
 func (pkt *PktIn) Init() {
@@ -46,6 +53,21 @@ func (pkt *PktIn) Process() {
 	}
 	log.Debug("%+v\n", h)
 
+	addr := PeerAddr{
+		Version: 4,
+		Static:  false,
+		Addr:    *pkt.SrcAddr,
+	}
+	pkt.Vpn.PeerPool[h.SrcID].AddAddr(&addr)
+
+	if h.DstID != pkt.Vpn.MyID {
+		pkt.Action = ActionForward
+		pkt.DstAddrs = pkt.Vpn.GetDstAddrs(h.SrcID, h.DstID)
+		log.Debug("%+v\n", pkt.DstAddrs)
+		return
+	}
+
+	pkt.Action = ActionWrite
 	// pkt.aesDecrypt()
 	// pkt.xorBody()
 	pkt.chacha20Decrypt()

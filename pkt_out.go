@@ -17,46 +17,25 @@ type PktOut struct {
 	Valid        bool
 	Addr         *net.UDPAddr
 	h            Header
-	ip           IPHeader
-	DstAddr      net.UDPAddr
+	DstAddrs     []*net.UDPAddr
 }
 
 func (pkt *PktOut) Init() {
 	pkt.OutterBuffer = make([]byte, MAX_MTU)
 	pkt.UdpBuffer = pkt.OutterBuffer[:]
 	pkt.TunBuffer = make([]byte, MAX_MTU)
-	pkt.ip = IPHeader{}
 	pkt.h = Header{Magic: MAGIC}
 }
 
 func (pkt *PktOut) Process() {
 	pkt.Valid = true
 
-	ip := &pkt.ip
-	h := &pkt.h
+	pkt.fillHeader()
 
-	ip.FromNetwork(pkt.TunBuffer)
-	log.Debug("%+v\n", ip)
+	pkt.DstAddrs = pkt.Vpn.GetDstAddrs(pkt.h.SrcID, pkt.h.DstID)
+	log.Debug("%+v\n", pkt.DstAddrs)
 
-	h.Length = uint16(pkt.InnerLen)
-	h.SrcID = uint16(ip.SrcIP & 0x0000FFFF)
-	h.DstID = uint16(ip.DstIP & 0x0000FFFF)
-	log.Debug("%+v\n", h)
-	log.Debug("%+v\n", pkt.Vpn.PeerPool[h.DstID])
-
-	if len(pkt.Vpn.PeerPool[h.DstID].Addrs) == 0 {
-		pkt.Valid = false
-		log.Debug("Invalid peer addr: %v\n", h.DstID)
-		return
-	}
-
-	pkt.DstAddr = pkt.Vpn.PeerPool[h.DstID].Addrs[0].Addr
-
-	UpdateTimestampSeq()
-	h.Timestamp = TIMESTAMP
-	h.Sequence = GLOBAL_SEQUENCE
-
-	pkt.Vpn.GroupCipher.Encrypt(pkt.OutterBuffer, h.ToNetwork())
+	pkt.Vpn.GroupCipher.Encrypt(pkt.OutterBuffer, pkt.h.ToNetwork())
 
 	// Benchmarks:
 	// bodyLen := pkt.aesEncrypt() // 210 Mbps
@@ -64,6 +43,36 @@ func (pkt *PktOut) Process() {
 	bodyLen := pkt.chacha20Encrypt() // 390 Mbps
 
 	pkt.UdpBuffer = pkt.OutterBuffer[:HEADER_LEN+bodyLen]
+}
+
+func (pkt *PktOut) fillHeader() {
+	var ip IPHeader
+	ip.FromNetwork(pkt.TunBuffer)
+	log.Debug("%+v\n", ip)
+
+	if ip.Version != 4 {
+		log.Debug("not support version: %v\n", ip.Version)
+		pkt.Valid = false
+		return
+	}
+
+	h := &pkt.h
+
+	h.Length = uint16(pkt.InnerLen)
+	h.SrcID = pkt.Vpn.MyID
+
+	if pkt.Vpn.Network == (ip.DstIP & NETMASK) {
+		h.DstID = uint16(ip.DstIP & 0x0000FFFF)
+	} else {
+		h.DstID = pkt.Vpn.Gateway
+	}
+
+	UpdateTimestampSeq()
+	h.Timestamp = TIMESTAMP
+	h.Sequence = GLOBAL_SEQUENCE
+
+	log.Debug("%+v\n", h)
+	log.Debug("dst: %+v\n", pkt.Vpn.PeerPool[h.DstID].Format())
 }
 
 func (pkt *PktOut) chacha20Encrypt() uint16 {

@@ -9,7 +9,7 @@ import (
 const AES_BLOCK_SIZE = 16
 
 // convert 1.1 to 257
-func IdPton(idStr string) int {
+func IdPton(idStr string) uint16 {
 	len := len(strings.Split(idStr, "."))
 	if len != 2 {
 		log.Warning("ID length is not 2: %v\n", idStr)
@@ -30,7 +30,7 @@ func IdPton(idStr string) int {
 		return 0
 	}
 
-	return intA*256 + intB
+	return uint16(intA*256 + intB)
 }
 
 func TruncateKey(key string) [AES_BLOCK_SIZE]byte {
