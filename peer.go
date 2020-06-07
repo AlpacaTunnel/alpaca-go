@@ -18,9 +18,10 @@ const (
 )
 
 type Peer struct {
-	ID    uint16
-	PSK   [AES_BLOCK_SIZE]byte
-	Addrs []*PeerAddr
+	ID        uint16
+	PSK       [AES_BLOCK_SIZE]byte
+	Addrs     []*PeerAddr
+	PktFilter PktFilter
 
 	// cache Addr entities
 	lastCleared           int64
@@ -242,15 +243,18 @@ func getPeer(line string) *Peer {
 		return nil
 	}
 
-	p := Peer{
-		ID:    IdPton(fields[0]),
-		PSK:   TruncateKey(fields[1]),
-		Addrs: make([]*PeerAddr, MAX_ADDR),
-	}
-
-	if p.ID == 0 {
+	if IdPton(fields[0]) == 0 {
 		return nil
 	}
+
+	p := Peer{
+		ID:        IdPton(fields[0]),
+		PSK:       TruncateKey(fields[1]),
+		Addrs:     make([]*PeerAddr, MAX_ADDR),
+		PktFilter: PktFilter{},
+	}
+
+	p.PktFilter.Init()
 
 	if len(fields) < 5 {
 		return &p

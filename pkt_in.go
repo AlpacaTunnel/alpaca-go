@@ -41,17 +41,12 @@ func (pkt *PktIn) Process() {
 	h := &pkt.h
 
 	h.FromNetwork(pkt.InnerBuffer)
-	if pkt.OutterLen < (HEADER_LEN + int(h.Length)) {
-		log.Debug("invalid length: %v -> %v\n", h.SrcID, h.DstID)
-		pkt.Valid = false
-		return
-	}
-	if h.Magic != MAGIC {
-		log.Debug("invalid magic: %v -> %v\n", h.SrcID, h.DstID)
-		pkt.Valid = false
-		return
-	}
 	log.Debug("%+v\n", h)
+
+	if !pkt.isPktValid() {
+		pkt.Valid = false
+		return
+	}
 
 	addr := PeerAddr{
 		Version: 4,
@@ -73,6 +68,27 @@ func (pkt *PktIn) Process() {
 	pkt.chacha20Decrypt()
 
 	pkt.TunBuffer = pkt.InnerBuffer[HEADER_LEN : HEADER_LEN+h.Length]
+}
+
+func (pkt *PktIn) isPktValid() bool {
+	h := &pkt.h
+
+	if pkt.OutterLen < (HEADER_LEN + int(h.Length)) {
+		log.Debug("invalid length: %v -> %v\n", h.SrcID, h.DstID)
+		return false
+	}
+
+	if h.Magic != MAGIC {
+		log.Debug("invalid magic: %v -> %v\n", h.SrcID, h.DstID)
+		return false
+	}
+
+	if !pkt.Vpn.PeerPool[h.SrcID].PktFilter.IsValid(h.Timestamp, h.Sequence) {
+		log.Debug("Packet is filtered as invalid, drop it: (%v -> %v)\n", h.SrcID, h.DstID)
+		return false
+	}
+
+	return true
 }
 
 func (pkt *PktIn) chacha20Decrypt() {
