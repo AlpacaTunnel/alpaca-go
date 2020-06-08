@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"strconv"
 	"strings"
@@ -184,7 +183,7 @@ func (p *Peer) updateAddrCache() {
 func GetPeerPool(path string) ([]Peer, error) {
 	pool := make([]Peer, MAX_ID+2)
 
-	lines, err := getLines(path)
+	lines, err := GetLines(path)
 	if err != nil {
 		return nil, err
 	}
@@ -275,24 +274,4 @@ func getPeer(line string) *Peer {
 	p.AddAddr(&addr)
 
 	return &p
-}
-
-func getLines(path string) ([]string, error) {
-	content, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	raw_lines := strings.Split(string(content), "\n")
-
-	var lines []string
-
-	for _, raw_line := range raw_lines {
-		line := strings.Trim(raw_line, " \t\r")
-		if line == "" || line[0] == '#' {
-			continue
-		}
-		lines = append(lines, line)
-	}
-
-	return lines, nil
 }

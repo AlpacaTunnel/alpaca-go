@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"io/ioutil"
+	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -60,4 +63,43 @@ func DeriveKey(psk, group, nonce []byte) []byte {
 	copy(buf[AES_BLOCK_SIZE*2:], nonce)
 	key := sha256.Sum256(buf)
 	return key[:]
+}
+
+// Get lines from path, remove lines starts with "#"
+func GetLines(path string) ([]string, error) {
+	content, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	raw_lines := strings.Split(string(content), "\n")
+
+	var lines []string
+
+	for _, raw_line := range raw_lines {
+		line := strings.Trim(raw_line, " \t\r")
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		lines = append(lines, line)
+	}
+
+	return lines, nil
+}
+
+func ExecCmd(cmd string) (string, error) {
+	c := exec.Command("bash", "-c", cmd)
+
+	var out bytes.Buffer
+	c.Stdout = &out
+	c.Stderr = &out
+
+	err := c.Run()
+	output := out.String()
+	log.Debug("cmd `%v` output: (%v)\n", cmd, output)
+	if err != nil {
+		log.Error("Error exec cmd `%v`: (%v)\n", cmd, err)
+		return output, err
+	}
+
+	return output, nil
 }

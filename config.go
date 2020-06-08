@@ -60,6 +60,10 @@ func GetConfig(path string) (Config, error) {
 		c.SecretFile = filepath.Join(filepath.Dir(c.Path), c.SecretFile)
 	}
 
+	if c.Chnroute.Data != "" {
+		c.Chnroute.Data = filepath.Join(filepath.Dir(c.Path), c.Chnroute.Data)
+	}
+
 	return c, nil
 }
 
