@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -32,6 +33,23 @@ func (l *Logger) printf(level string, format string, a ...interface{}) {
 	}
 
 	fmt.Printf(prefix+format, a...)
+}
+
+func (l *Logger) SetLevel(level string) {
+	if strings.EqualFold(level, "CRITICAL") {
+		l.Level = LevelCritical
+	} else if strings.EqualFold(level, "ERROR") {
+		l.Level = LevelError
+	} else if strings.EqualFold(level, "WARNING") {
+		l.Level = LevelWarning
+	} else if strings.EqualFold(level, "INFO") {
+		l.Level = LevelInfo
+	} else if strings.EqualFold(level, "DEBUG") {
+		l.Level = LevelDebug
+	} else {
+		l.Warning("Invalid level setter: %v, use INFO by default.\n", level)
+		l.Level = LevelInfo
+	}
 }
 
 func (l *Logger) Critical(format string, a ...interface{}) {

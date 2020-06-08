@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-var log = Logger{Level: LevelDebug}
+var log = Logger{Level: LevelInfo}
 
 func workerSend(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
 	pkt := PktOut{
@@ -91,6 +91,7 @@ func main() {
 		log.Error("Error get config: %v\n", err)
 		return
 	}
+	log.SetLevel(conf.LogLevel)
 	log.Info("%+v\n", conf.Format())
 
 	pool, err := GetPeerPool(conf.SecretFile)

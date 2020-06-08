@@ -37,7 +37,7 @@ func (pkt *PktOut) Process() {
 
 	pkt.Vpn.GroupCipher.Encrypt(pkt.OutterBuffer, pkt.h.ToNetwork())
 
-	// Benchmarks:
+	// Benchmarks: (only encryption, no pkt filter)
 	// bodyLen := pkt.aesEncrypt() // 210 Mbps
 	// bodyLen := pkt.xorBody() // 460 Mbps
 	bodyLen := pkt.chacha20Encrypt() // 390 Mbps
@@ -72,7 +72,7 @@ func (pkt *PktOut) fillHeader() {
 	h.Sequence = GLOBAL_SEQUENCE
 
 	log.Debug("%+v\n", h)
-	log.Debug("dst: %+v\n", pkt.Vpn.PeerPool[h.DstID].Format())
+	// log.Debug("dst: %+v\n", pkt.Vpn.PeerPool[h.DstID].Format())
 }
 
 func (pkt *PktOut) chacha20Encrypt() uint16 {
