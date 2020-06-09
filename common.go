@@ -95,7 +95,13 @@ func ExecCmd(cmd string) (string, error) {
 
 	err := c.Run()
 	output := out.String()
-	log.Debug("cmd `%v` output: (%v)\n", cmd, output)
+
+	if len(output) == 0 {
+		log.Debug("cmd `%v` output: (%v)\n", cmd, output)
+	} else {
+		log.Debug("cmd `%v` output: (\n%v)\n", cmd, output)
+	}
+
 	if err != nil {
 		log.Error("Error exec cmd `%v`: (%v)\n", cmd, err)
 		return output, err

@@ -4,13 +4,22 @@ import (
 	"fmt"
 	"io/ioutil"
 	"regexp"
+	"strings"
 	"time"
+)
+
+const (
+	TCP_MSS        = 1300
+	MODE_SERVER    = "server"
+	MODE_CLIENT    = "client"
+	MODE_FORWARDER = "forwarder"
 )
 
 type System struct {
 	Conf        Config
-	pool        []Peer
+	PeerPool    []Peer
 	DefautRoute string
+	MyIP        string
 	Gateway     string
 }
 
@@ -18,7 +27,7 @@ func (s *System) getAddRoutesCmds() []string {
 	var cmds []string
 	cmds = append(cmds, "ip route delete default")
 
-	for _, peer := range s.pool {
+	for _, peer := range s.PeerPool {
 		if peer.ID == 0 {
 			continue
 		}
@@ -33,7 +42,7 @@ func (s *System) getAddRoutesCmds() []string {
 		cmds = append(cmds, route)
 	}
 
-	defaultRoute := fmt.Sprintf("ip route add default via %v table default", s.DefautRoute)
+	defaultRoute := fmt.Sprintf("ip route add default via %v table default", s.Gateway)
 	cmds = append(cmds, defaultRoute)
 
 	return cmds
@@ -44,12 +53,12 @@ func (s *System) getDelRoutesCmds() []string {
 	defaultRoute := fmt.Sprintf("ip route add default via %v", s.DefautRoute)
 	cmds = append(cmds, defaultRoute)
 
-	for _, peer := range s.pool {
+	for _, peer := range s.PeerPool {
 		if peer.ID == 0 {
 			continue
 		}
 		for _, addr := range peer.GetAddr(true, false) {
-			route := fmt.Sprintf("ip route delete %v via %v table default | true", addr.IP, s.DefautRoute)
+			route := fmt.Sprintf("ip route delete %v via %v table default", addr.IP, s.DefautRoute)
 			cmds = append(cmds, route)
 		}
 	}
@@ -59,13 +68,13 @@ func (s *System) getDelRoutesCmds() []string {
 		cmds = append(cmds, route)
 	}
 
-	cmds = append(cmds, "ip route add default table default")
+	cmds = append(cmds, "ip route delete default table default")
 
 	return cmds
 }
 
 func (s *System) getDefaultRoute() string {
-	output, _ := ExecCmd("ip route show default table default")
+	output, _ := ExecCmd("ip route show default")
 	re := regexp.MustCompile(`default\s+via\s+([\.\d]+)\s*`)
 	route := re.FindSubmatch([]byte(output))
 	if len(route) != 2 {
@@ -110,24 +119,154 @@ func (s *System) getChnrouteFile(action string) string {
 	return tmpFile
 }
 
-func (s *System) Chnroute() {
+func (s *System) chnroute() error {
 	chnFile := s.getChnrouteFile("add")
 	if len(chnFile) == 0 {
-		return
+		return nil
 	}
 
 	cmd := "ip -force -batch " + chnFile
-	log.Debug("%v\n", cmd)
-	ExecCmd(cmd)
+	log.Info("%v\n", cmd)
+	_, err := ExecCmd(cmd)
+	return err
 }
 
-func (s *System) ChnrouteRestore() {
+func (s *System) chnrouteRestore() {
 	chnFile := s.getChnrouteFile("del")
 	if len(chnFile) == 0 {
 		return
 	}
 
-	cmd := "ip -force -batch " + chnFile
-	log.Debug("%v\n", cmd)
+	cmd := fmt.Sprintf("ip -force -batch %v > %v.log 2>&1", chnFile, chnFile)
+	log.Info("%v\n", cmd)
 	ExecCmd(cmd)
+}
+
+func (s *System) initClient() error {
+	s.waitDefaultRoute()
+	cmds := s.getAddRoutesCmds()
+
+	cmds = append(cmds, "sysctl net.ipv4.ip_forward=1")
+	cmds = append(cmds, fmt.Sprintf("iptables -A FORWARD -s %v.0.0/16 -j ACCEPT", s.Conf.Net))
+	cmds = append(cmds, fmt.Sprintf("iptables -A FORWARD -d %v.0.0/16 -j ACCEPT", s.Conf.Net))
+	cmds = append(cmds, fmt.Sprintf("iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss %v", TCP_MSS))
+
+	for _, cmd := range cmds {
+		_, err := ExecCmd(cmd)
+		if err != nil {
+			return err
+		}
+	}
+
+	return s.chnroute()
+}
+
+func (s *System) restoreClient() {
+	cmds := s.getDelRoutesCmds()
+
+	cmds = append(cmds, fmt.Sprintf("iptables -D FORWARD -s %v.0.0/16 -j ACCEPT", s.Conf.Net))
+	cmds = append(cmds, fmt.Sprintf("iptables -D FORWARD -d %v.0.0/16 -j ACCEPT", s.Conf.Net))
+	cmds = append(cmds, fmt.Sprintf("iptables -t mangle -D POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss %v", TCP_MSS))
+
+	for _, cmd := range cmds {
+		ExecCmd(cmd)
+	}
+
+	s.chnrouteRestore()
+}
+
+func (s *System) initServer() error {
+	var cmds []string
+	cmds = append(cmds, "sysctl net.ipv4.ip_forward=1")
+	cmds = append(cmds, fmt.Sprintf("iptables -A FORWARD -s %v.0.0/16 -j ACCEPT", s.Conf.Net))
+	cmds = append(cmds, fmt.Sprintf("iptables -A FORWARD -d %v.0.0/16 -j ACCEPT", s.Conf.Net))
+	cmds = append(cmds, fmt.Sprintf("iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss %v", TCP_MSS))
+	cmds = append(cmds, fmt.Sprintf("iptables -A POSTROUTING -t nat -s %v.0.0/16 -j MASQUERADE", s.Conf.Net))
+
+	for _, cmd := range cmds {
+		_, err := ExecCmd(cmd)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *System) restoreServer() {
+	var cmds []string
+	cmds = append(cmds, fmt.Sprintf("iptables -D FORWARD -s %v.0.0/16 -j ACCEPT", s.Conf.Net))
+	cmds = append(cmds, fmt.Sprintf("iptables -D FORWARD -d %v.0.0/16 -j ACCEPT", s.Conf.Net))
+	cmds = append(cmds, fmt.Sprintf("iptables -t mangle -D POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss %v", TCP_MSS))
+	cmds = append(cmds, fmt.Sprintf("iptables -D POSTROUTING -t nat -s %v.0.0/16 -j MASQUERADE", s.Conf.Net))
+
+	for _, cmd := range cmds {
+		ExecCmd(cmd)
+	}
+}
+
+func (s *System) execPostUp() error {
+	for _, cmd := range s.Conf.PostUpCmds {
+		_, err := ExecCmd(cmd)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *System) execPostDown() {
+	for _, cmd := range s.Conf.PostDownCmds {
+		ExecCmd(cmd)
+	}
+}
+
+func (s *System) AddIP() error {
+	var cmds []string
+	cmds = append(cmds, fmt.Sprintf("ip link set %v up", s.Conf.Name))
+	cmds = append(cmds, fmt.Sprintf("ip link set %v mtu %v", s.Conf.Name, TUN_MTU))
+	cmds = append(cmds, fmt.Sprintf("ip addr add %v/16 dev %v", s.MyIP, s.Conf.Name))
+
+	for _, cmd := range cmds {
+		_, err := ExecCmd(cmd)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *System) Init() error {
+	log.Info("Init system...\n")
+
+	var err error
+
+	if !strings.EqualFold(s.Conf.Mode, MODE_FORWARDER) {
+		err = s.AddIP()
+		if err != nil {
+			return err
+		}
+	}
+
+	if strings.EqualFold(s.Conf.Mode, MODE_CLIENT) {
+		err = s.initClient()
+		if err != nil {
+			return err
+		}
+	} else {
+		err := s.initServer()
+		if err != nil {
+			return err
+		}
+	}
+	return s.execPostUp()
+}
+
+func (s *System) Restore() {
+	log.Info("Restore system...\n")
+	if strings.EqualFold(s.Conf.Mode, MODE_CLIENT) {
+		s.restoreClient()
+	} else {
+		s.restoreServer()
+	}
+	s.execPostDown()
 }

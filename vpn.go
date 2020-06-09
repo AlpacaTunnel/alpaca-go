@@ -11,6 +11,7 @@ const (
 	NETMASK = 0xFFFF0000
 	IDMASK  = 0x0000FFFF
 	MAX_MTU = 1500
+	TUN_MTU = 1408
 )
 
 type VPNCtx struct {
