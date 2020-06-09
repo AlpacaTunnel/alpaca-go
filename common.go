@@ -113,7 +113,7 @@ func ExecCmd(cmd string) (string, error) {
 
 func ObfsLength(length uint16) uint16 {
 	if length < 500 {
-		length = uint16(rand.Intn(550)) + 250
+		length += uint16(rand.Intn(550)) + 250
 	}
 	return length
 }
