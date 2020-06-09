@@ -5,6 +5,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"os/signal"
@@ -15,17 +16,26 @@ import (
 
 var log = Logger{Level: LevelInfo}
 
-func workerSend(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
+func workerSend(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
 	pkt := PktOut{
 		Vpn: vpn,
 	}
 	pkt.Init()
 
 	var err error
-	for {
+	for *running {
 		pkt.InnerLen, err = tunFd.Read(pkt.TunBuffer)
-		if err != nil {
-			log.Warning("error read: %v\n", err)
+
+		switch err := err.(type) {
+		case nil:
+			// no error
+		case *os.PathError:
+			log.Error("Error read: %T: %v\n", err, err)
+			log.Error("Tunnel interface may have been deleted, exit now.\n")
+			*running = false
+			return
+		default:
+			log.Warning("error read: %T: %v\n", err, err)
 		}
 
 		pkt.Process()
@@ -43,13 +53,13 @@ func workerSend(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
 	}
 }
 
-func workerRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
+func workerRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
 	pkt := PktIn{
 		Vpn: vpn,
 	}
 	pkt.Init()
 
-	for {
+	for *running {
 		length, addr, err := conn.ReadFromUDP(pkt.UdpBuffer)
 		if err != nil {
 			log.Warning("error recv: %v\n", err)
@@ -65,7 +75,7 @@ func workerRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
 
 		if pkt.Action == ActionForward {
 			for _, addr := range pkt.DstAddrs {
-				_, err = conn.WriteToUDP(pkt.UdpBuffer[:length], addr)
+				_, err = conn.WriteToUDP(pkt.UdpBuffer[:ObfsLength(pkt.h.Length)], addr)
 				if err != nil {
 					log.Warning("error send: %v\n", err)
 				}
@@ -107,6 +117,7 @@ func main() {
 	var vpn VPNCtx
 	var system System
 	running := true
+	rand.Seed(time.Now().UnixNano())
 
 	path := flag.String("c", "/usr/local/etc/alpaca-tunnel.d/config.json", "Path to config.json")
 	flag.Parse()
@@ -178,10 +189,12 @@ func main() {
 	go signalHandler(sigCh, system, &running)
 
 	if !strings.EqualFold(conf.Mode, MODE_FORWARDER) {
-		go workerSend(tunFd, conn, &vpn)
+		go workerSend(tunFd, conn, &vpn, &running)
 	}
 
-	go workerRecv(tunFd, conn, &vpn)
+	go workerRecv(tunFd, conn, &vpn, &running)
+
+	log.Info("VPN started...\n")
 
 	for running {
 		time.Sleep(time.Second)

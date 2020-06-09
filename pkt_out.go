@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"math/rand"
 	"net"
 
 	"golang.org/x/crypto/chacha20poly1305"
@@ -22,6 +23,7 @@ type PktOut struct {
 
 func (pkt *PktOut) Init() {
 	pkt.OutterBuffer = make([]byte, MAX_MTU)
+	rand.Read(pkt.OutterBuffer)
 	pkt.UdpBuffer = pkt.OutterBuffer[:]
 	pkt.TunBuffer = make([]byte, MAX_MTU)
 	pkt.h = Header{Magic: MAGIC}
@@ -41,6 +43,8 @@ func (pkt *PktOut) Process() {
 	// bodyLen := pkt.aesEncrypt() // 210 Mbps
 	// bodyLen := pkt.xorBody() // 460 Mbps
 	bodyLen := pkt.chacha20Encrypt() // 390 Mbps
+
+	bodyLen = ObfsLength(bodyLen) // TODO: feed random data?
 
 	pkt.UdpBuffer = pkt.OutterBuffer[:HEADER_LEN+bodyLen]
 }

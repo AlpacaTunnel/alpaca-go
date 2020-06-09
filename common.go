@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"io/ioutil"
+	"math/rand"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -103,9 +104,16 @@ func ExecCmd(cmd string) (string, error) {
 	}
 
 	if err != nil {
-		log.Error("Error exec cmd `%v`: (%v)\n", cmd, err)
+		log.Error("Error exec cmd `%v`, %v: (\n%v)\n", cmd, err, output)
 		return output, err
 	}
 
 	return output, nil
+}
+
+func ObfsLength(length uint16) uint16 {
+	if length < 500 {
+		length = uint16(rand.Intn(550)) + 250
+	}
+	return length
 }
