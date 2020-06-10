@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 )
 
 const DEFAULT_CONFIG = "config.json"
@@ -62,6 +64,14 @@ func GetConfig(path string) (Config, error) {
 
 	if c.Chnroute.Data != "" {
 		c.Chnroute.Data = filepath.Join(filepath.Dir(c.Path), c.Chnroute.Data)
+	}
+
+	if !strings.EqualFold("server", c.Mode) && !strings.EqualFold("client", c.Mode) && !strings.EqualFold("forwarder", c.Mode) {
+		return c, errors.New("Mode can only be server/client/forwarder")
+	}
+
+	if strings.EqualFold("client", c.Mode) && len(c.Gateway) == 0 {
+		return c, errors.New("Client must have a gateway")
 	}
 
 	return c, nil

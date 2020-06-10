@@ -75,6 +75,7 @@ func workerRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
 
 		if pkt.Action == ActionForward {
 			for _, addr := range pkt.DstAddrs {
+				// TODO: re-encrypt? otherwise bytes data are the same
 				fwdLen := HEADER_LEN + CHACHA20_OVERHEAD + ObfsLength(pkt.h.Length)
 				_, err = conn.WriteToUDP(pkt.UdpBuffer[:fwdLen], addr)
 				if err != nil {

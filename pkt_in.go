@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"net"
@@ -43,7 +44,7 @@ func (pkt *PktIn) Process() {
 	h.FromNetwork(pkt.InnerBuffer)
 	log.Debug("%+v\n", h)
 
-	if !pkt.isPktValid() {
+	if !pkt.isHeaderValid() {
 		pkt.Valid = false
 		return
 	}
@@ -55,9 +56,14 @@ func (pkt *PktIn) Process() {
 	}
 	pkt.Vpn.PeerPool[h.SrcID].AddAddr(&addr)
 
+	if !pkt.isPktValid() {
+		pkt.Valid = false
+		return
+	}
+
 	if h.DstID != pkt.Vpn.MyID {
 		pkt.Action = ActionForward
-		pkt.DstAddrs = pkt.Vpn.GetDstAddrs(h.SrcID, h.DstID)
+		pkt.DstAddrs = pkt.getDstAddrs()
 		log.Debug("%+v\n", pkt.DstAddrs)
 		return
 	}
@@ -70,18 +76,29 @@ func (pkt *PktIn) Process() {
 	pkt.TunBuffer = pkt.InnerBuffer[HEADER_LEN : HEADER_LEN+h.Length]
 }
 
-func (pkt *PktIn) isPktValid() bool {
+func (pkt *PktIn) isHeaderValid() bool {
 	h := &pkt.h
 
-	if pkt.OutterLen < (HEADER_LEN + int(h.Length)) {
-		log.Debug("invalid length: %v -> %v\n", h.SrcID, h.DstID)
+	if h.Magic != MAGIC {
+		log.Debug("Invalid magic, ignore the packet: (%v -> %v)\n", h.SrcID, h.DstID)
 		return false
 	}
 
-	if h.Magic != MAGIC {
-		log.Debug("invalid magic: %v -> %v\n", h.SrcID, h.DstID)
+	if pkt.Vpn.PeerPool[h.DstID].ID == 0 || pkt.Vpn.PeerPool[h.SrcID].ID == 0 {
+		log.Debug("Not found srd_id or dst_id: (%v -> %v)\n", h.SrcID, h.DstID)
 		return false
 	}
+
+	if h.DstID == h.SrcID {
+		log.Debug("The same srd_id and dst_id: (%v -> %v)\n", h.SrcID, h.DstID)
+		return false
+	}
+
+	return true
+}
+
+func (pkt *PktIn) isPktValid() bool {
+	h := &pkt.h
 
 	if !pkt.Vpn.PeerPool[h.SrcID].PktFilter.IsValid(h.Timestamp, h.Sequence) {
 		log.Debug("Packet is filtered as invalid, drop it: (%v -> %v)\n", h.SrcID, h.DstID)
@@ -89,6 +106,19 @@ func (pkt *PktIn) isPktValid() bool {
 	}
 
 	return true
+}
+
+func (pkt *PktIn) getDstAddrs() []*net.UDPAddr {
+	dstAddrs := make([]*net.UDPAddr, 0, MAX_ADDR*2)
+	for _, addr := range pkt.Vpn.GetDstAddrs(pkt.h.SrcID, pkt.h.DstID) {
+		if bytes.Equal(addr.IP, pkt.SrcAddr.IP) {
+			// split horizon
+			log.Debug("Can not resend to the receiving address.\n")
+		} else {
+			dstAddrs = append(dstAddrs, addr)
+		}
+	}
+	return dstAddrs
 }
 
 func (pkt *PktIn) chacha20Decrypt() {

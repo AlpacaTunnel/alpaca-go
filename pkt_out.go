@@ -33,6 +33,9 @@ func (pkt *PktOut) Process() {
 	pkt.Valid = true
 
 	pkt.fillHeader()
+	if !pkt.Valid {
+		return
+	}
 
 	pkt.DstAddrs = pkt.Vpn.GetDstAddrs(pkt.h.SrcID, pkt.h.DstID)
 	log.Debug("%+v\n", pkt.DstAddrs)
@@ -44,9 +47,11 @@ func (pkt *PktOut) Process() {
 	// bodyLen := pkt.xorBody() // 460 Mbps
 	bodyLen := pkt.chacha20Encrypt() // 390 Mbps
 
-	bodyLen = ObfsLength(bodyLen) // TODO: feed random data?
+	obfsLen := ObfsLength(bodyLen)
+	// feed random data for the obfs part
+	rand.Read(pkt.OutterBuffer[HEADER_LEN+bodyLen : HEADER_LEN+obfsLen])
 
-	pkt.UdpBuffer = pkt.OutterBuffer[:HEADER_LEN+bodyLen]
+	pkt.UdpBuffer = pkt.OutterBuffer[:HEADER_LEN+obfsLen]
 }
 
 func (pkt *PktOut) fillHeader() {
