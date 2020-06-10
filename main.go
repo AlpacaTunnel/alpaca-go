@@ -75,7 +75,8 @@ func workerRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
 
 		if pkt.Action == ActionForward {
 			for _, addr := range pkt.DstAddrs {
-				_, err = conn.WriteToUDP(pkt.UdpBuffer[:ObfsLength(pkt.h.Length)], addr)
+				fwdLen := HEADER_LEN + CHACHA20_OVERHEAD + ObfsLength(pkt.h.Length)
+				_, err = conn.WriteToUDP(pkt.UdpBuffer[:fwdLen], addr)
 				if err != nil {
 					log.Warning("error send: %v\n", err)
 				}

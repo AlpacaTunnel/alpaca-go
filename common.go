@@ -10,7 +10,10 @@ import (
 	"strings"
 )
 
-const AES_BLOCK_SIZE = 16
+const (
+	AES_BLOCK_SIZE    = 16
+	CHACHA20_OVERHEAD = 16
+)
 
 // convert 1.1 to 257
 func IdPton(idStr string) uint16 {
