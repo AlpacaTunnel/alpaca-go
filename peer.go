@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 	"strconv"
@@ -12,7 +11,6 @@ import (
 const (
 	MAX_ID         = 65535
 	MAX_ADDR       = 4
-	ACTIVE_PERIOD  = 60
 	CACHE_DURATION = 10
 )
 
@@ -30,96 +28,24 @@ type Peer struct {
 	allActiveAddrs        []*net.UDPAddr
 }
 
-type PeerAddr struct {
-	Static     bool
-	Version    int
-	Addr       net.UDPAddr
-	LastActive int64
-}
-
-func (addr *PeerAddr) Clear() {
-	if addr == nil {
-		return
-	}
-	addr.Addr.Port = 0
-	addr.LastActive = 0
-}
-
-func (addr *PeerAddr) IsEmpty() bool {
-	if addr == nil || addr.Addr.Port == 0 {
-		return true
-	}
-	return false
-}
-
-func (addr *PeerAddr) IsStatic() bool {
-	if addr.IsEmpty() {
-		return false
-	}
-	return addr.Static
-}
-
-func (addr *PeerAddr) IsDynamic() bool {
-	if addr.IsEmpty() {
-		return false
-	}
-	return !addr.Static
-}
-
-func (addr *PeerAddr) IsActive() bool {
-	if addr.IsEmpty() {
-		return false
-	}
-	if time.Now().Unix()-addr.LastActive < ACTIVE_PERIOD {
-		return true
-	}
-	return false
-}
-
-func (addr *PeerAddr) IsInactive() bool {
-	if addr.IsEmpty() {
-		return false
-	}
-	if time.Now().Unix()-addr.LastActive > ACTIVE_PERIOD {
-		return true
-	}
-	return false
-}
-
-func (addr *PeerAddr) Activate() {
-	if addr.IsEmpty() {
-		return
-	}
-	addr.LastActive = time.Now().Unix()
-}
-
-func (addr *PeerAddr) Equal(other *PeerAddr) bool {
-	if addr == nil || other == nil {
-		return false
-	}
-	if (addr.Version == other.Version) && (addr.Addr.Port == other.Addr.Port) && (bytes.Equal(addr.Addr.IP, other.Addr.IP)) {
-		return true
-	}
-	return false
-}
-
-// TODO: add lock? seems OK without a lock.
-func (p *Peer) AddAddr(newAddr *PeerAddr) {
+// It should be OK to activate/replace an address without a lock
+func (p *Peer) AddAddr(newAddr *PeerAddr) bool {
 	for _, addr := range p.Addrs {
 		if addr.Equal(newAddr) {
 			addr.Activate()
-			return
+			return false
 		}
 	}
 
 	for index, addr := range p.Addrs {
 		if addr.IsEmpty() {
-			p.Addrs[index] = newAddr
 			newAddr.Activate()
-			p.updateAddrCache()
-			return
+			p.Addrs[index] = newAddr
+			return true
 		}
 	}
+
+	return false
 }
 
 func (p *Peer) GetAddr(static, inactiveDownwardStatic bool) []*net.UDPAddr {
@@ -153,10 +79,10 @@ func (p *Peer) clearPeriodically() {
 		}
 	}
 
-	p.updateAddrCache()
+	p.UpdateAddrCache()
 }
 
-func (p *Peer) updateAddrCache() {
+func (p *Peer) UpdateAddrCache() {
 	p.allStaticDynamicAddrs = make([]*net.UDPAddr, 0, MAX_ADDR)
 	p.allStaticAddrs = make([]*net.UDPAddr, 0, MAX_ADDR)
 	p.allDynamicAddrs = make([]*net.UDPAddr, 0, MAX_ADDR)

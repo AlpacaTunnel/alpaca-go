@@ -49,12 +49,7 @@ func (pkt *PktIn) Process() {
 		return
 	}
 
-	addr := PeerAddr{
-		Version: 4,
-		Static:  false,
-		Addr:    *pkt.SrcAddr,
-	}
-	pkt.Vpn.PeerPool[h.SrcID].AddAddr(&addr)
+	pkt.Vpn.AddAddr(h.SrcID, pkt.SrcAddr)
 
 	if !pkt.isPktValid() {
 		pkt.Valid = false

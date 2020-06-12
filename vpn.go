@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"net"
+	"sync"
 )
 
 const (
@@ -23,6 +24,7 @@ type VPNCtx struct {
 	Network     uint32
 	PeerPool    []Peer
 	Forwarders  []uint16
+	AddrLock    sync.Mutex // To avoid creating too many locks, use a global lock
 }
 
 func (v *VPNCtx) InitCtx() error {
@@ -45,7 +47,27 @@ func (v *VPNCtx) InitCtx() error {
 	return nil
 }
 
+func (v *VPNCtx) AddAddr(srcId uint16, addr *net.UDPAddr) {
+	peerAddr := PeerAddr{
+		Version: 4,
+		Static:  false,
+		Addr:    *addr,
+	}
+
+	added := v.PeerPool[srcId].AddAddr(&peerAddr)
+
+	if added {
+		v.AddrLock.Lock()
+		defer v.AddrLock.Unlock()
+		v.PeerPool[srcId].UpdateAddrCache()
+	}
+}
+
 func (v *VPNCtx) GetDstAddrs(srcId, dstId uint16) []*net.UDPAddr {
+	// add lock here, otherwise the returned cache may be empty slice
+	v.AddrLock.Lock()
+	defer v.AddrLock.Unlock()
+
 	if srcId < dstId {
 		return v.PeerPool[dstId].GetAddr(false, v.Config.InactiveDownwardStatic)
 	}
