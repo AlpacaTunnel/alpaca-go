@@ -116,6 +116,7 @@ func (p *Peer) AddAddr(newAddr *PeerAddr) {
 		if addr.IsEmpty() {
 			p.Addrs[index] = newAddr
 			newAddr.Activate()
+			p.updateAddrCache()
 			return
 		}
 	}
