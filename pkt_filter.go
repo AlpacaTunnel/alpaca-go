@@ -30,7 +30,7 @@ func Abs(x int64) int64 {
 }
 
 func (filter *PktFilter) IsValid(timestamp, sequence uint32) bool {
-	if sequence > filter.Limit {
+	if sequence >= filter.Limit {
 		log.Debug("Pkt sequence number exceeded limit\n")
 		return false
 	}
