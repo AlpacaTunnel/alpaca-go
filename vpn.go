@@ -68,16 +68,28 @@ func (v *VPNCtx) GetDstAddrs(srcId, dstId uint16) []*net.UDPAddr {
 	v.AddrLock.Lock()
 	defer v.AddrLock.Unlock()
 
+	// 1) From server to client, don't send to forwarder (in the view of the working ID).
+	//    If client has static address, will send to both static and dynamic.
 	if srcId < dstId {
 		return v.PeerPool[dstId].GetAddr(false, v.Config.InactiveDownwardStatic)
 	}
 
-	if len(v.Forwarders) == 0 {
+	// 2) followings are from client to server
+	//    Servers must have static addresses, only send to static.
+
+	// 2.1) empty forwarder, send to server's static
+	if len(v.Forwarders) == 0 && len(v.PeerPool[dstId].Forwarders) == 0 {
 		return v.PeerPool[dstId].GetAddr(true, false)
 	}
 
+	// 2.2) send to forwarders, peer's custom forwarders have higher priority
+	forwarders := v.Forwarders
+	if len(v.PeerPool[dstId].Forwarders) != 0 {
+		forwarders = v.PeerPool[dstId].Forwarders
+	}
+
 	dstAddrs := make([]*net.UDPAddr, 0, MAX_ADDR*2)
-	for _, fId := range v.Forwarders {
+	for _, fId := range forwarders {
 		addrs := v.PeerPool[fId].GetAddr(true, false)
 		dstAddrs = append(dstAddrs, addrs...)
 	}

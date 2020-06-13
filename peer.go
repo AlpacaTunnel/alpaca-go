@@ -15,10 +15,11 @@ const (
 )
 
 type Peer struct {
-	ID        uint16
-	PSK       [AES_BLOCK_SIZE]byte
-	Addrs     []*PeerAddr
-	PktFilter PktFilter
+	ID         uint16
+	PSK        [AES_BLOCK_SIZE]byte
+	Addrs      []*PeerAddr
+	Forwarders []uint16
+	PktFilter  PktFilter
 
 	// cache Addr entities
 	lastCleared           int64
@@ -148,6 +149,7 @@ func (p *Peer) Format() string {
 	output := ""
 	output += fmt.Sprintf("%5v: ", p.ID)
 	output += fmt.Sprintf("%x ", p.PSK)
+
 	for _, addr := range p.Addrs {
 		if addr.IsEmpty() {
 			continue
@@ -159,6 +161,11 @@ func (p *Peer) Format() string {
 		}
 		output += fmt.Sprintf("%v:%v ", addr.Addr.IP, addr.Addr.Port)
 	}
+
+	for _, fId := range p.Forwarders {
+		output += fmt.Sprintf("F-%v ", fId)
+	}
+
 	output += "\n"
 	return output
 }
@@ -173,23 +180,35 @@ func getPeer(line string) *Peer {
 		return nil
 	}
 
+	if IdPton(fields[0]) == 1 || IdPton(fields[0]) == 255*255 {
+		log.Warning("Reserved ID: %v\n", fields[0])
+		return nil
+	}
+
 	p := Peer{
-		ID:        IdPton(fields[0]),
-		PSK:       TruncateKey(fields[1]),
-		Addrs:     make([]*PeerAddr, MAX_ADDR),
-		PktFilter: PktFilter{},
+		ID:         IdPton(fields[0]),
+		PSK:        TruncateKey(fields[1]),
+		Addrs:      make([]*PeerAddr, MAX_ADDR),
+		Forwarders: make([]uint16, 0, MAX_ADDR),
+		PktFilter:  PktFilter{},
 	}
 
 	p.PktFilter.Init()
 
-	if len(fields) < 5 {
+	if len(fields) < 3 {
 		return &p
 	}
 
-	port, err := strconv.Atoi(fields[4])
-	ip := net.ParseIP(fields[2])
+	ipPort := strings.Split(fields[2], ":")
+	if len(ipPort) != 2 {
+		log.Warning("Failed to parse IP:Port - %v\n", fields[2])
+		return &p
+	}
+
+	ip := net.ParseIP(ipPort[0])
+	port, err := strconv.Atoi(ipPort[1])
 	if err != nil || ip == nil {
-		log.Warning("Failed to parse IP:Port - %v:%v\n", fields[2], fields[4])
+		log.Warning("Failed to parse IP:Port - %v\n", fields[2])
 		return &p
 	}
 
@@ -200,5 +219,28 @@ func getPeer(line string) *Peer {
 	}
 	p.AddAddr(&addr)
 
+	if len(fields) < 4 {
+		return &p
+	}
+
+	if !strings.EqualFold(fields[3], "null") {
+		log.Warning("IPv6 not supported now, skip it.\n")
+	}
+
+	if len(fields) < 5 {
+		return &p
+	}
+
+	forwarders := strings.Split(fields[4], "/")
+	for _, forwarder := range forwarders {
+		fId := IdPton(forwarder)
+		if fId == 0 {
+			log.Warning("Invalid forwarder, ignore: %v.\n", forwarder)
+			continue
+		}
+		p.Forwarders = append(p.Forwarders, fId)
+	}
+
+	// if strings.EqualFold(fields)
 	return &p
 }
