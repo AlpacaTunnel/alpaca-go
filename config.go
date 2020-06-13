@@ -17,7 +17,7 @@ type Config struct {
 	Mode                   string   `json:"mode"`
 	Group                  string   `json:"group"`
 	Net                    string   `json:"net"`
-	Id                     string   `json:"id"`
+	ID                     string   `json:"id"`
 	Gateway                string   `json:"gateway"`
 	Port                   int      `json:"port"`
 	Mtu                    int      `json:"mtu"`

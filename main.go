@@ -76,7 +76,7 @@ func workerRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
 		if pkt.Action == ActionForward {
 			for _, addr := range pkt.DstAddrs {
 				// TODO: re-encrypt? otherwise bytes data are the same
-				fwdLen := HEADER_LEN + CHACHA20_OVERHEAD + ObfsLength(pkt.h.Length)
+				fwdLen := HEADER_LEN + CHACHA20_OVERHEAD + ObfsLength(pkt.H.Length)
 				_, err = conn.WriteToUDP(pkt.UdpBuffer[:fwdLen], addr)
 				if err != nil {
 					log.Warning("error send: %v\n", err)
@@ -134,7 +134,7 @@ func main() {
 	log.SetLevel(conf.LogLevel)
 	log.Info("%+v\n", conf.Format())
 
-	pool, err = GetPeerPool(conf.SecretFile, IdPton(conf.Id))
+	pool, err = GetPeerPool(conf.SecretFile, IdPton(conf.ID))
 	if err != nil {
 		log.Error("Error get pool: %v\n", err)
 		return
@@ -174,7 +174,7 @@ func main() {
 		Conf:        conf,
 		PeerPool:    pool,
 		DefautRoute: "",
-		MyIP:        fmt.Sprintf("%v.%v", conf.Net, conf.Id),
+		MyIP:        fmt.Sprintf("%v.%v", conf.Net, conf.ID),
 		Gateway:     fmt.Sprintf("%v.%v", conf.Net, conf.Gateway),
 	}
 

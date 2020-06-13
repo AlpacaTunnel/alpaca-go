@@ -6,9 +6,11 @@ import (
 
 const (
 	HEADER_LEN = AES_BLOCK_SIZE
+	TYPE_DATA  = 0
 	MAX_TTL    = 15
 )
 
+// Don't change the fields other than TTL when forward! The fields after TTL are chacha20 nonce.
 type Header struct {
 	Type      uint16 // 3 bits
 	SrcInside uint16 // 1 bit

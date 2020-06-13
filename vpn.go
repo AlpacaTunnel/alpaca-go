@@ -35,7 +35,7 @@ func (v *VPNCtx) InitCtx() error {
 	}
 
 	v.GroupCipher = cipher
-	v.MyID = IdPton(v.Config.Id)
+	v.MyID = IdPton(v.Config.ID)
 	v.Gateway = IdPton(v.Config.Gateway)
 	v.Network = uint32(IdPton(v.Config.Net)) << 16
 
@@ -51,50 +51,50 @@ func (v *VPNCtx) InitCtx() error {
 	return nil
 }
 
-func (v *VPNCtx) AddAddr(srcId uint16, addr *net.UDPAddr) {
+func (v *VPNCtx) AddAddr(srcID uint16, addr *net.UDPAddr) {
 	peerAddr := PeerAddr{
 		Version: 4,
 		Static:  false,
 		Addr:    *addr,
 	}
 
-	added := v.PeerPool[srcId].AddAddr(&peerAddr)
+	added := v.PeerPool[srcID].AddAddr(&peerAddr)
 
 	if added {
 		v.AddrLock.Lock()
 		defer v.AddrLock.Unlock()
-		v.PeerPool[srcId].UpdateAddrCache()
+		v.PeerPool[srcID].UpdateAddrCache()
 	}
 }
 
-func (v *VPNCtx) GetDstAddrs(srcId, dstId uint16) []*net.UDPAddr {
+func (v *VPNCtx) GetDstAddrs(srcID, dstID uint16) []*net.UDPAddr {
 	// add lock here, otherwise the returned cache may be empty slice
 	v.AddrLock.Lock()
 	defer v.AddrLock.Unlock()
 
 	// 1) From server to client, don't send to forwarder (in the view of the working ID).
 	//    If client has static address, will send to both static and dynamic.
-	if srcId < dstId {
-		return v.PeerPool[dstId].GetAddr(false, v.Config.InactiveDownwardStatic)
+	if srcID < dstID {
+		return v.PeerPool[dstID].GetAddr(false, v.Config.InactiveDownwardStatic)
 	}
 
 	// 2) followings are from client to server
 	//    Servers must have static addresses, only send to static.
 
 	// 2.1) empty forwarder, send to server's static
-	if len(v.Forwarders) == 0 && len(v.PeerPool[dstId].Forwarders) == 0 {
-		return v.PeerPool[dstId].GetAddr(true, false)
+	if len(v.Forwarders) == 0 && len(v.PeerPool[dstID].Forwarders) == 0 {
+		return v.PeerPool[dstID].GetAddr(true, false)
 	}
 
 	// 2.2) send to forwarders, peer's custom forwarders have higher priority
 	forwarders := v.Forwarders
-	if len(v.PeerPool[dstId].Forwarders) != 0 {
-		forwarders = v.PeerPool[dstId].Forwarders
+	if len(v.PeerPool[dstID].Forwarders) != 0 {
+		forwarders = v.PeerPool[dstID].Forwarders
 	}
 
 	dstAddrs := make([]*net.UDPAddr, 0, MAX_ADDR*2)
-	for _, fId := range forwarders {
-		addrs := v.PeerPool[fId].GetAddr(true, false)
+	for _, fID := range forwarders {
+		addrs := v.PeerPool[fID].GetAddr(true, false)
 		dstAddrs = append(dstAddrs, addrs...)
 	}
 

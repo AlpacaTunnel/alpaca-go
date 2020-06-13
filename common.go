@@ -55,8 +55,8 @@ func MaxInt(x, y int) int {
 }
 
 func GetPsk(pool []Peer, h *Header) []byte {
-	biggerId := MaxInt(int(h.DstID), int(h.SrcID))
-	psk := pool[biggerId].PSK
+	biggerID := MaxInt(int(h.DstID), int(h.SrcID))
+	psk := pool[biggerID].PSK
 	return psk[:]
 }
 

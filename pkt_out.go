@@ -17,7 +17,7 @@ type PktOut struct {
 	Vpn          *VPNCtx
 	Valid        bool
 	Addr         *net.UDPAddr
-	h            Header
+	H            Header
 	DstAddrs     []*net.UDPAddr
 }
 
@@ -26,7 +26,6 @@ func (pkt *PktOut) Init() {
 	rand.Read(pkt.OutterBuffer)
 	pkt.UdpBuffer = pkt.OutterBuffer[:]
 	pkt.TunBuffer = make([]byte, MAX_MTU)
-	pkt.h = Header{Magic: MAGIC}
 }
 
 func (pkt *PktOut) Process() {
@@ -37,10 +36,10 @@ func (pkt *PktOut) Process() {
 		return
 	}
 
-	pkt.DstAddrs = pkt.Vpn.GetDstAddrs(pkt.h.SrcID, pkt.h.DstID)
+	pkt.DstAddrs = pkt.Vpn.GetDstAddrs(pkt.H.SrcID, pkt.H.DstID)
 	log.Debug("%+v\n", pkt.DstAddrs)
 
-	pkt.Vpn.GroupCipher.Encrypt(pkt.OutterBuffer, pkt.h.ToNetwork())
+	pkt.Vpn.GroupCipher.Encrypt(pkt.OutterBuffer, pkt.H.ToNetwork())
 
 	// Benchmarks: (only encryption, no pkt filter)
 	// bodyLen := pkt.aesEncrypt() // 210 Mbps
@@ -65,11 +64,14 @@ func (pkt *PktOut) fillHeader() {
 		return
 	}
 
-	h := &pkt.h
+	h := &pkt.H
 
-	h.Length = uint16(pkt.InnerLen)
-	h.SrcID = pkt.Vpn.MyID
+	h.Type = TYPE_DATA
 	h.TTL = MAX_TTL
+	h.Magic = MAGIC
+	h.Length = uint16(pkt.InnerLen)
+	h.Random = uint32(rand.Intn(4096))
+	h.SrcID = pkt.Vpn.MyID
 
 	if pkt.Vpn.Network == (ip.SrcIP & NETMASK) {
 		h.SrcInside = 1
@@ -94,9 +96,9 @@ func (pkt *PktOut) fillHeader() {
 }
 
 func (pkt *PktOut) chacha20Encrypt() uint16 {
-	nonce := pkt.h.ToNetwork()[4:16]
+	nonce := pkt.H.ToNetwork()[4:16]
 
-	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
 	key := DeriveKey(psk, pkt.Vpn.GroupPSK[:], nonce)
 
 	aead, err := chacha20poly1305.New(key[:])
@@ -106,23 +108,23 @@ func (pkt *PktOut) chacha20Encrypt() uint16 {
 		return 0
 	}
 
-	aead.Seal(pkt.OutterBuffer[:HEADER_LEN], nonce, pkt.TunBuffer[:pkt.h.Length], nil)
+	aead.Seal(pkt.OutterBuffer[:HEADER_LEN], nonce, pkt.TunBuffer[:pkt.H.Length], nil)
 
-	return pkt.h.Length + uint16(aead.Overhead())
+	return pkt.H.Length + uint16(aead.Overhead())
 }
 
 func (pkt *PktOut) xorBody() uint16 {
-	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
 
-	for i := 0; i < int(pkt.h.Length); i++ {
+	for i := 0; i < int(pkt.H.Length); i++ {
 		pkt.OutterBuffer[HEADER_LEN+i] = pkt.TunBuffer[i] ^ psk[i%AES_BLOCK_SIZE]
 	}
 
-	return pkt.h.Length
+	return pkt.H.Length
 }
 
 func (pkt *PktOut) aesEncrypt() uint16 {
-	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
 
 	block, err := aes.NewCipher(psk)
 	if err != nil {
@@ -130,9 +132,9 @@ func (pkt *PktOut) aesEncrypt() uint16 {
 		return 0
 	}
 
-	mode := cipher.NewCBCEncrypter(block, pkt.h.ToNetwork())
+	mode := cipher.NewCBCEncrypter(block, pkt.H.ToNetwork())
 
-	aesBlockLen := ((pkt.h.Length + 15) / 16) * 16
+	aesBlockLen := ((pkt.H.Length + 15) / 16) * 16
 
 	mode.CryptBlocks(
 		pkt.OutterBuffer[HEADER_LEN:],

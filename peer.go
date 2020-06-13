@@ -179,8 +179,8 @@ func (p *Peer) Format() string {
 		output += fmt.Sprintf("%v:%v ", addr.Addr.IP, addr.Addr.Port)
 	}
 
-	for _, fId := range p.Forwarders {
-		output += fmt.Sprintf("F-%v ", fId)
+	for _, fID := range p.Forwarders {
+		output += fmt.Sprintf("F-%v ", fID)
 	}
 
 	output += "\n"
@@ -254,16 +254,16 @@ func getPeer(line string, myID uint16) *Peer {
 
 	forwarders := strings.Split(fields[4], "/")
 	for _, forwarder := range forwarders {
-		fId := IdPton(forwarder)
-		if fId == 0 {
+		fID := IdPton(forwarder)
+		if fID == 0 {
 			log.Warning("Invalid forwarder, ignore: %v.\n", forwarder)
 			continue
 		}
-		if fId == myID {
+		if fID == myID {
 			log.Warning("Forwarder is self, ignore: %v.\n", forwarder)
 			continue
 		}
-		p.Forwarders = append(p.Forwarders, fId)
+		p.Forwarders = append(p.Forwarders, fID)
 	}
 
 	return &p

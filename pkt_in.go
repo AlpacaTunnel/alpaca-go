@@ -23,7 +23,7 @@ type PktIn struct {
 	Valid       bool
 	SrcAddr     *net.UDPAddr
 	DstAddrs    []*net.UDPAddr
-	h           Header
+	H           Header
 	Action      int
 }
 
@@ -31,7 +31,7 @@ func (pkt *PktIn) Init() {
 	pkt.UdpBuffer = make([]byte, MAX_MTU)
 	pkt.InnerBuffer = make([]byte, MAX_MTU)
 	pkt.TunBuffer = pkt.InnerBuffer[HEADER_LEN:]
-	pkt.h = Header{}
+	pkt.H = Header{}
 }
 
 func (pkt *PktIn) Process() {
@@ -39,7 +39,7 @@ func (pkt *PktIn) Process() {
 
 	pkt.Vpn.GroupCipher.Decrypt(pkt.InnerBuffer, pkt.UdpBuffer[:HEADER_LEN])
 
-	h := &pkt.h
+	h := &pkt.H
 
 	h.FromNetwork(pkt.InnerBuffer)
 	log.Debug("%+v\n", h)
@@ -71,7 +71,7 @@ func (pkt *PktIn) Process() {
 
 func (pkt *PktIn) processForward() {
 	pkt.Action = ActionForward
-	h := &pkt.h
+	h := &pkt.H
 
 	if h.TTL == 0 {
 		log.Error("TTL expired: (%v -> %v)\n", h.SrcID, h.DstID)
@@ -87,7 +87,7 @@ func (pkt *PktIn) processForward() {
 }
 
 func (pkt *PktIn) isHeaderValid() bool {
-	h := &pkt.h
+	h := &pkt.H
 
 	if h.Magic != MAGIC {
 		log.Debug("Invalid magic, ignore the packet: (%v -> %v)\n", h.SrcID, h.DstID)
@@ -108,7 +108,7 @@ func (pkt *PktIn) isHeaderValid() bool {
 }
 
 func (pkt *PktIn) isPktValid() bool {
-	h := &pkt.h
+	h := &pkt.H
 
 	if !pkt.Vpn.PeerPool[h.SrcID].PktFilter.IsValid(h.Timestamp, h.Sequence) {
 		log.Debug("Packet is filtered as invalid, drop it: (%v -> %v)\n", h.SrcID, h.DstID)
@@ -120,7 +120,7 @@ func (pkt *PktIn) isPktValid() bool {
 
 func (pkt *PktIn) getDstAddrs() []*net.UDPAddr {
 	dstAddrs := make([]*net.UDPAddr, 0, MAX_ADDR*2)
-	for _, addr := range pkt.Vpn.GetDstAddrs(pkt.h.SrcID, pkt.h.DstID) {
+	for _, addr := range pkt.Vpn.GetDstAddrs(pkt.H.SrcID, pkt.H.DstID) {
 		if bytes.Equal(addr.IP, pkt.SrcAddr.IP) {
 			// split horizon
 			log.Debug("Can not resend to the receiving address.\n")
@@ -134,7 +134,7 @@ func (pkt *PktIn) getDstAddrs() []*net.UDPAddr {
 func (pkt *PktIn) chacha20Decrypt() {
 	nonce := pkt.InnerBuffer[4:16]
 
-	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
 	key := DeriveKey(psk, pkt.Vpn.GroupPSK[:], nonce)
 
 	aead, err := chacha20poly1305.New(key[:])
@@ -144,7 +144,7 @@ func (pkt *PktIn) chacha20Decrypt() {
 		return
 	}
 
-	cipherBody := pkt.UdpBuffer[HEADER_LEN : HEADER_LEN+int(pkt.h.Length)+aead.Overhead()]
+	cipherBody := pkt.UdpBuffer[HEADER_LEN : HEADER_LEN+int(pkt.H.Length)+aead.Overhead()]
 
 	_, err = aead.Open(pkt.InnerBuffer[:HEADER_LEN], nonce, cipherBody, nil)
 	if err != nil {
@@ -155,15 +155,15 @@ func (pkt *PktIn) chacha20Decrypt() {
 }
 
 func (pkt *PktIn) xorBody() {
-	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
 
-	for i := 0; i < int(pkt.h.Length); i++ {
+	for i := 0; i < int(pkt.H.Length); i++ {
 		pkt.InnerBuffer[HEADER_LEN+i] = pkt.UdpBuffer[HEADER_LEN+i] ^ psk[i%AES_BLOCK_SIZE]
 	}
 }
 
 func (pkt *PktIn) aesDecrypt() {
-	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.h)
+	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
 
 	block, err := aes.NewCipher(psk)
 	if err != nil {
@@ -171,9 +171,9 @@ func (pkt *PktIn) aesDecrypt() {
 		return
 	}
 
-	mode := cipher.NewCBCDecrypter(block, pkt.h.ToNetwork())
+	mode := cipher.NewCBCDecrypter(block, pkt.H.ToNetwork())
 
-	aesBlockLen := ((pkt.h.Length + 15) / 16) * 16
+	aesBlockLen := ((pkt.H.Length + 15) / 16) * 16
 
 	mode.CryptBlocks(
 		pkt.InnerBuffer[HEADER_LEN:],
