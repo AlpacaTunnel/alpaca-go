@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
 	"net"
 
 	"golang.org/x/crypto/chacha20poly1305"
@@ -49,34 +47,35 @@ func (pkt *PktIn) Process() {
 		return
 	}
 
+	err := pkt.chacha20Decrypt()
+	if err != nil {
+		pkt.Valid = false
+		return
+	}
+
 	pkt.Vpn.AddAddr(h.SrcID, pkt.SrcAddr)
 
-	if !pkt.isPktValid() {
+	if pkt.isPktFiltered() {
 		pkt.Valid = false
 		return
 	}
 
 	if h.DstID != pkt.Vpn.MyID {
-		pkt.processForward()
+		pkt.Action = ACTION_FORWARD
+		pkt.Valid = pkt.processForward()
 		return
 	}
 
 	pkt.Action = ACTION_WRITE
-	// pkt.aesDecrypt()
-	// pkt.xorBody()
-	pkt.chacha20Decrypt()
-
 	pkt.TunBuffer = pkt.InnerBuffer[HEADER_LEN : HEADER_LEN+h.Length]
 }
 
-func (pkt *PktIn) processForward() {
-	pkt.Action = ACTION_FORWARD
+func (pkt *PktIn) processForward() bool {
 	h := &pkt.H
 
 	if h.TTL == 0 {
 		log.Error("TTL expired: (%v -> %v)\n", h.SrcID, h.DstID)
-		pkt.Valid = false
-		return
+		return false
 	}
 	h.TTL -= 1
 
@@ -84,6 +83,7 @@ func (pkt *PktIn) processForward() {
 	log.Debug("%+v\n", pkt.DstAddrs)
 
 	pkt.Vpn.GroupCipher.Encrypt(pkt.UdpBuffer, h.ToNetwork())
+	return true
 }
 
 func (pkt *PktIn) isHeaderValid() bool {
@@ -107,15 +107,15 @@ func (pkt *PktIn) isHeaderValid() bool {
 	return true
 }
 
-func (pkt *PktIn) isPktValid() bool {
+func (pkt *PktIn) isPktFiltered() bool {
 	h := &pkt.H
 
 	if !pkt.Vpn.PeerPool[h.SrcID].PktFilter.IsValid(h.Timestamp, h.Sequence) {
 		log.Debug("Packet is filtered as invalid, drop it: (%v -> %v)\n", h.SrcID, h.DstID)
-		return false
+		return true
 	}
 
-	return true
+	return false
 }
 
 func (pkt *PktIn) getDstAddrs() []*net.UDPAddr {
@@ -131,7 +131,7 @@ func (pkt *PktIn) getDstAddrs() []*net.UDPAddr {
 	return dstAddrs
 }
 
-func (pkt *PktIn) chacha20Decrypt() {
+func (pkt *PktIn) chacha20Decrypt() error {
 	nonce := pkt.InnerBuffer[4:16]
 
 	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
@@ -140,8 +140,7 @@ func (pkt *PktIn) chacha20Decrypt() {
 	aead, err := chacha20poly1305.New(key[:])
 	if err != nil {
 		log.Warning("Error new chacha20: %v\n", err)
-		pkt.Valid = false
-		return
+		return err
 	}
 
 	cipherBody := pkt.UdpBuffer[HEADER_LEN : HEADER_LEN+int(pkt.H.Length)+aead.Overhead()]
@@ -149,34 +148,8 @@ func (pkt *PktIn) chacha20Decrypt() {
 	_, err = aead.Open(pkt.InnerBuffer[:HEADER_LEN], nonce, cipherBody, nil)
 	if err != nil {
 		log.Debug("Error open chacha20: %v\n", err)
-		pkt.Valid = false
-		return
-	}
-}
-
-func (pkt *PktIn) xorBody() {
-	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
-
-	for i := 0; i < int(pkt.H.Length); i++ {
-		pkt.InnerBuffer[HEADER_LEN+i] = pkt.UdpBuffer[HEADER_LEN+i] ^ psk[i%AES_BLOCK_SIZE]
-	}
-}
-
-func (pkt *PktIn) aesDecrypt() {
-	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
-
-	block, err := aes.NewCipher(psk)
-	if err != nil {
-		pkt.Valid = false
-		return
+		return err
 	}
 
-	mode := cipher.NewCBCDecrypter(block, pkt.H.ToNetwork())
-
-	aesBlockLen := ((pkt.H.Length + 15) / 16) * 16
-
-	mode.CryptBlocks(
-		pkt.InnerBuffer[HEADER_LEN:],
-		pkt.UdpBuffer[HEADER_LEN:HEADER_LEN+aesBlockLen],
-	)
+	return nil
 }

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"math/rand"
 	"net"
 
@@ -31,8 +29,8 @@ func (pkt *PktOut) Init() {
 func (pkt *PktOut) Process() {
 	pkt.Valid = true
 
-	pkt.fillHeader()
-	if !pkt.Valid {
+	if !pkt.fillHeader() {
+		pkt.Valid = false
 		return
 	}
 
@@ -41,10 +39,11 @@ func (pkt *PktOut) Process() {
 
 	pkt.Vpn.GroupCipher.Encrypt(pkt.OutterBuffer, pkt.H.ToNetwork())
 
-	// Benchmarks: (only encryption, no pkt filter)
-	// bodyLen := pkt.aesEncrypt() // 210 Mbps
-	// bodyLen := pkt.xorBody() // 460 Mbps
-	bodyLen := pkt.chacha20Encrypt() // 390 Mbps
+	bodyLen, err := pkt.chacha20Encrypt()
+	if err != nil {
+		pkt.Valid = false
+		return
+	}
 
 	obfsLen := ObfsLength(bodyLen)
 	// feed random data for the obfs part
@@ -53,15 +52,14 @@ func (pkt *PktOut) Process() {
 	pkt.UdpBuffer = pkt.OutterBuffer[:HEADER_LEN+obfsLen]
 }
 
-func (pkt *PktOut) fillHeader() {
+func (pkt *PktOut) fillHeader() bool {
 	var ip IPHeader
 	ip.FromNetwork(pkt.TunBuffer)
 	log.Debug("%+v\n", ip)
 
 	if ip.Version != 4 {
 		log.Debug("not support version: %v\n", ip.Version)
-		pkt.Valid = false
-		return
+		return false
 	}
 
 	h := &pkt.H
@@ -93,9 +91,11 @@ func (pkt *PktOut) fillHeader() {
 
 	log.Debug("%+v\n", h)
 	// log.Debug("dst: %+v\n", pkt.Vpn.PeerPool[h.DstID].Format())
+
+	return true
 }
 
-func (pkt *PktOut) chacha20Encrypt() uint16 {
+func (pkt *PktOut) chacha20Encrypt() (uint16, error) {
 	nonce := pkt.H.ToNetwork()[4:16]
 
 	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
@@ -104,42 +104,10 @@ func (pkt *PktOut) chacha20Encrypt() uint16 {
 	aead, err := chacha20poly1305.New(key[:])
 	if err != nil {
 		log.Warning("Error new chacha20: %v\n", err)
-		pkt.Valid = false
-		return 0
+		return 0, err
 	}
 
 	aead.Seal(pkt.OutterBuffer[:HEADER_LEN], nonce, pkt.TunBuffer[:pkt.H.Length], nil)
 
-	return pkt.H.Length + uint16(aead.Overhead())
-}
-
-func (pkt *PktOut) xorBody() uint16 {
-	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
-
-	for i := 0; i < int(pkt.H.Length); i++ {
-		pkt.OutterBuffer[HEADER_LEN+i] = pkt.TunBuffer[i] ^ psk[i%AES_BLOCK_SIZE]
-	}
-
-	return pkt.H.Length
-}
-
-func (pkt *PktOut) aesEncrypt() uint16 {
-	psk := GetPsk(pkt.Vpn.PeerPool, &pkt.H)
-
-	block, err := aes.NewCipher(psk)
-	if err != nil {
-		pkt.Valid = false
-		return 0
-	}
-
-	mode := cipher.NewCBCEncrypter(block, pkt.H.ToNetwork())
-
-	aesBlockLen := ((pkt.H.Length + 15) / 16) * 16
-
-	mode.CryptBlocks(
-		pkt.OutterBuffer[HEADER_LEN:],
-		pkt.TunBuffer[:aesBlockLen],
-	)
-
-	return aesBlockLen
+	return pkt.H.Length + uint16(aead.Overhead()), nil
 }
