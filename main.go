@@ -134,7 +134,7 @@ func main() {
 	log.SetLevel(conf.LogLevel)
 	log.Info("%+v\n", conf.Format())
 
-	pool, err = GetPeerPool(conf.SecretFile)
+	pool, err = GetPeerPool(conf.SecretFile, IdPton(conf.Id))
 	if err != nil {
 		log.Error("Error get pool: %v\n", err)
 		return

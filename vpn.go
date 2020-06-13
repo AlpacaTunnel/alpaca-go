@@ -41,6 +41,10 @@ func (v *VPNCtx) InitCtx() error {
 
 	v.Forwarders = make([]uint16, 0, MAX_ADDR)
 	for _, forwarder := range v.Config.Forwarders {
+		if IdPton(forwarder) == v.MyID {
+			log.Warning("Forwarder is self, ignore: %v.\n", forwarder)
+			continue
+		}
 		v.Forwarders = append(v.Forwarders, IdPton(forwarder))
 	}
 

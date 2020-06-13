@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -108,7 +109,7 @@ func (p *Peer) UpdateAddrCache() {
 	}
 }
 
-func GetPeerPool(path string) ([]Peer, error) {
+func GetPeerPool(path string, myID uint16) ([]Peer, error) {
 	pool := make([]Peer, MAX_ID+2)
 
 	lines, err := GetLines(path)
@@ -117,7 +118,7 @@ func GetPeerPool(path string) ([]Peer, error) {
 	}
 
 	for _, line := range lines {
-		p := getPeer(line)
+		p := getPeer(line, myID)
 		if p == nil {
 			log.Warning("Ignore this line: %v\n", line)
 			continue
@@ -129,6 +130,10 @@ func GetPeerPool(path string) ([]Peer, error) {
 		}
 
 		pool[p.ID] = *p
+	}
+
+	if pool[myID].ID == 0 {
+		return pool, errors.New("Self ID not included in secrets")
 	}
 
 	return pool, nil
@@ -170,7 +175,7 @@ func (p *Peer) Format() string {
 	return output
 }
 
-func getPeer(line string) *Peer {
+func getPeer(line string, myID uint16) *Peer {
 	fields := strings.Fields(line)
 	if len(fields) < 2 {
 		return nil
@@ -196,6 +201,10 @@ func getPeer(line string) *Peer {
 	p.PktFilter.Init()
 
 	if len(fields) < 3 {
+		return &p
+	}
+
+	if p.ID == myID {
 		return &p
 	}
 
@@ -238,9 +247,12 @@ func getPeer(line string) *Peer {
 			log.Warning("Invalid forwarder, ignore: %v.\n", forwarder)
 			continue
 		}
+		if fId == myID {
+			log.Warning("Forwarder is self, ignore: %v.\n", forwarder)
+			continue
+		}
 		p.Forwarders = append(p.Forwarders, fId)
 	}
 
-	// if strings.EqualFold(fields)
 	return &p
 }
