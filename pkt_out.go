@@ -69,16 +69,25 @@ func (pkt *PktOut) fillHeader() {
 
 	h.Length = uint16(pkt.InnerLen)
 	h.SrcID = pkt.Vpn.MyID
+	h.TTL = MAX_TTL
+
+	if pkt.Vpn.Network == (ip.SrcIP & NETMASK) {
+		h.SrcInside = 1
+	} else {
+		h.SrcInside = 0
+	}
 
 	if pkt.Vpn.Network == (ip.DstIP & NETMASK) {
+		h.DstInside = 1
 		h.DstID = uint16(ip.DstIP & 0x0000FFFF)
 	} else {
+		h.DstInside = 0
 		h.DstID = pkt.Vpn.Gateway
 	}
 
-	UpdateTimestampSeq()
-	h.Timestamp = TIMESTAMP
-	h.Sequence = GLOBAL_SEQUENCE
+	pkt.Vpn.PeerPool[h.DstID].UpdateTimestampSeq()
+	h.Timestamp = pkt.Vpn.PeerPool[h.DstID].Timestamp
+	h.Sequence = pkt.Vpn.PeerPool[h.DstID].Sequence
 
 	log.Debug("%+v\n", h)
 	// log.Debug("dst: %+v\n", pkt.Vpn.PeerPool[h.DstID].Format())

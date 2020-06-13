@@ -57,9 +57,7 @@ func (pkt *PktIn) Process() {
 	}
 
 	if h.DstID != pkt.Vpn.MyID {
-		pkt.Action = ActionForward
-		pkt.DstAddrs = pkt.getDstAddrs()
-		log.Debug("%+v\n", pkt.DstAddrs)
+		pkt.processForward()
 		return
 	}
 
@@ -69,6 +67,23 @@ func (pkt *PktIn) Process() {
 	pkt.chacha20Decrypt()
 
 	pkt.TunBuffer = pkt.InnerBuffer[HEADER_LEN : HEADER_LEN+h.Length]
+}
+
+func (pkt *PktIn) processForward() {
+	pkt.Action = ActionForward
+	h := &pkt.h
+
+	if h.TTL == 0 {
+		log.Error("TTL expired: (%v -> %v)\n", h.SrcID, h.DstID)
+		pkt.Valid = false
+		return
+	}
+	h.TTL -= 1
+
+	pkt.DstAddrs = pkt.getDstAddrs()
+	log.Debug("%+v\n", pkt.DstAddrs)
+
+	pkt.Vpn.GroupCipher.Encrypt(pkt.UdpBuffer, h.ToNetwork())
 }
 
 func (pkt *PktIn) isHeaderValid() bool {

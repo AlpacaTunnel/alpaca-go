@@ -21,6 +21,8 @@ type Peer struct {
 	Addrs      []*PeerAddr
 	Forwarders []uint16
 	PktFilter  PktFilter
+	Timestamp  uint32
+	Sequence   uint32
 
 	// cache Addr entities
 	lastCleared           int64
@@ -28,6 +30,16 @@ type Peer struct {
 	allStaticAddrs        []*net.UDPAddr
 	allDynamicAddrs       []*net.UDPAddr
 	allActiveAddrs        []*net.UDPAddr
+}
+
+func (p *Peer) UpdateTimestampSeq() {
+	now := uint32(time.Now().Unix())
+	if now == p.Timestamp {
+		p.Sequence += 1
+	} else {
+		p.Timestamp = now
+		p.Sequence = 0
+	}
 }
 
 // It should be OK to activate/replace an address without a lock

@@ -2,14 +2,12 @@ package main
 
 import (
 	"encoding/binary"
-	"time"
 )
 
-const HEADER_LEN = AES_BLOCK_SIZE
-
-// TODO: each peer should use its own sequence var
-var GLOBAL_SEQUENCE uint32
-var TIMESTAMP uint32
+const (
+	HEADER_LEN = AES_BLOCK_SIZE
+	MAX_TTL    = 15
+)
 
 type Header struct {
 	Type      uint16 // 3 bits
@@ -62,14 +60,4 @@ func (h *Header) ToNetwork() []byte {
 	binary.BigEndian.PutUint32(data[12:16], seqRand)
 
 	return data
-}
-
-func UpdateTimestampSeq() {
-	now := uint32(time.Now().Unix())
-	if now == TIMESTAMP {
-		GLOBAL_SEQUENCE += 1
-	} else {
-		TIMESTAMP = now
-		GLOBAL_SEQUENCE = 0
-	}
 }
