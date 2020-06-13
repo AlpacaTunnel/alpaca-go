@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var log = Logger{Level: LevelInfo}
+var log = Logger{}
 
 func workerSend(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
 	pkt := PktOut{
@@ -73,7 +73,7 @@ func workerRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
 			continue
 		}
 
-		if pkt.Action == ActionForward {
+		if pkt.Action == ACTION_FORWARD {
 			for _, addr := range pkt.DstAddrs {
 				// TODO: re-encrypt? otherwise bytes data are the same
 				fwdLen := HEADER_LEN + CHACHA20_OVERHEAD + ObfsLength(pkt.H.Length)

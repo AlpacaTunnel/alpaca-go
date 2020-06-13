@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	ActionForward = 1
-	ActionWrite   = 2
+	ACTION_FORWARD = 1
+	ACTION_WRITE   = 2
 )
 
 type PktIn struct {
@@ -61,7 +61,7 @@ func (pkt *PktIn) Process() {
 		return
 	}
 
-	pkt.Action = ActionWrite
+	pkt.Action = ACTION_WRITE
 	// pkt.aesDecrypt()
 	// pkt.xorBody()
 	pkt.chacha20Decrypt()
@@ -70,7 +70,7 @@ func (pkt *PktIn) Process() {
 }
 
 func (pkt *PktIn) processForward() {
-	pkt.Action = ActionForward
+	pkt.Action = ACTION_FORWARD
 	h := &pkt.H
 
 	if h.TTL == 0 {

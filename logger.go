@@ -10,12 +10,12 @@ import (
 )
 
 const (
-	LevelCritical = 50
-	LevelError    = 40
-	LevelWarning  = 30
-	LevelInfo     = 20
-	LevelDebug    = 10
-	LevelNotset   = 0
+	levelCritical = 50
+	levelError    = 40
+	levelWarning  = 30
+	levelInfo     = 20
+	levelDebug    = 10
+	levelNotset   = 0
 )
 
 // a wrapper of fmt.Printf
@@ -37,47 +37,47 @@ func (l *Logger) printf(level string, format string, a ...interface{}) {
 
 func (l *Logger) SetLevel(level string) {
 	if strings.EqualFold(level, "CRITICAL") {
-		l.Level = LevelCritical
+		l.Level = levelCritical
 	} else if strings.EqualFold(level, "ERROR") {
-		l.Level = LevelError
+		l.Level = levelError
 	} else if strings.EqualFold(level, "WARNING") {
-		l.Level = LevelWarning
+		l.Level = levelWarning
 	} else if strings.EqualFold(level, "INFO") {
-		l.Level = LevelInfo
+		l.Level = levelInfo
 	} else if strings.EqualFold(level, "DEBUG") {
-		l.Level = LevelDebug
+		l.Level = levelDebug
 	} else {
 		l.Warning("Invalid level setter: %v, use INFO by default.\n", level)
-		l.Level = LevelInfo
+		l.Level = levelInfo
 	}
 }
 
 func (l *Logger) Critical(format string, a ...interface{}) {
-	if l.Level <= LevelCritical {
+	if l.Level <= levelCritical {
 		l.printf("CRITICAL", format, a...)
 	}
 }
 
 func (l *Logger) Error(format string, a ...interface{}) {
-	if l.Level <= LevelError {
+	if l.Level <= levelError {
 		l.printf("ERROR", format, a...)
 	}
 }
 
 func (l *Logger) Warning(format string, a ...interface{}) {
-	if l.Level <= LevelWarning {
+	if l.Level <= levelWarning {
 		l.printf("WARNING", format, a...)
 	}
 }
 
 func (l *Logger) Info(format string, a ...interface{}) {
-	if l.Level <= LevelInfo {
+	if l.Level <= levelInfo {
 		l.printf("INFO", format, a...)
 	}
 }
 
 func (l *Logger) Debug(format string, a ...interface{}) {
-	if l.Level <= LevelDebug {
+	if l.Level <= levelDebug {
 		l.printf("DEBUG", format, a...)
 	}
 }
