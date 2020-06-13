@@ -13,7 +13,6 @@ type PktOut struct {
 	UdpBuffer    []byte
 	TunBuffer    []byte
 	Vpn          *VPNCtx
-	Valid        bool
 	Addr         *net.UDPAddr
 	H            Header
 	DstAddrs     []*net.UDPAddr
@@ -26,12 +25,9 @@ func (pkt *PktOut) Init() {
 	pkt.TunBuffer = make([]byte, MAX_MTU)
 }
 
-func (pkt *PktOut) Process() {
-	pkt.Valid = true
-
+func (pkt *PktOut) Process() bool {
 	if !pkt.fillHeader() {
-		pkt.Valid = false
-		return
+		return false
 	}
 
 	pkt.DstAddrs = pkt.Vpn.GetDstAddrs(pkt.H.SrcID, pkt.H.DstID)
@@ -41,8 +37,7 @@ func (pkt *PktOut) Process() {
 
 	bodyLen, err := pkt.chacha20Encrypt()
 	if err != nil {
-		pkt.Valid = false
-		return
+		return false
 	}
 
 	obfsLen := ObfsLength(bodyLen)
@@ -50,6 +45,7 @@ func (pkt *PktOut) Process() {
 	rand.Read(pkt.OutterBuffer[HEADER_LEN+bodyLen : HEADER_LEN+obfsLen])
 
 	pkt.UdpBuffer = pkt.OutterBuffer[:HEADER_LEN+obfsLen]
+	return true
 }
 
 func (pkt *PktOut) fillHeader() bool {

@@ -18,7 +18,6 @@ type PktIn struct {
 	InnerBuffer []byte
 	TunBuffer   []byte
 	Vpn         *VPNCtx
-	Valid       bool
 	SrcAddr     *net.UDPAddr
 	DstAddrs    []*net.UDPAddr
 	H           Header
@@ -32,42 +31,45 @@ func (pkt *PktIn) Init() {
 	pkt.H = Header{}
 }
 
-func (pkt *PktIn) Process() {
-	pkt.Valid = true
-
+func (pkt *PktIn) Process() bool {
 	pkt.Vpn.GroupCipher.Decrypt(pkt.InnerBuffer, pkt.UdpBuffer[:HEADER_LEN])
 
 	h := &pkt.H
-
 	h.FromNetwork(pkt.InnerBuffer)
 	log.Debug("%+v\n", h)
 
 	if !pkt.isHeaderValid() {
-		pkt.Valid = false
-		return
+		return false
 	}
 
-	err := pkt.chacha20Decrypt()
-	if err != nil {
-		pkt.Valid = false
-		return
+	if h.DstID == pkt.Vpn.MyID {
+		pkt.Action = ACTION_WRITE
+	} else {
+		pkt.Action = ACTION_FORWARD
 	}
 
+	if pkt.Action == ACTION_WRITE {
+		err := pkt.chacha20Decrypt()
+		if err != nil {
+			return false
+		}
+		pkt.TunBuffer = pkt.InnerBuffer[HEADER_LEN : HEADER_LEN+h.Length]
+	}
+
+	// For a forwarder, if the pkt is faked, its src addr is still stored.
+	// If the real client uses the same forwarder, the fake peer can receive the downstream pkt.
+	// To make it safer, let the forwarder decrypt before store src addr. But it's unnecessary overload.
 	pkt.Vpn.AddAddr(h.SrcID, pkt.SrcAddr)
 
 	if pkt.isPktFiltered() {
-		pkt.Valid = false
-		return
+		return false
 	}
 
-	if h.DstID != pkt.Vpn.MyID {
-		pkt.Action = ACTION_FORWARD
-		pkt.Valid = pkt.processForward()
-		return
+	if pkt.Action == ACTION_FORWARD {
+		return pkt.processForward()
 	}
 
-	pkt.Action = ACTION_WRITE
-	pkt.TunBuffer = pkt.InnerBuffer[HEADER_LEN : HEADER_LEN+h.Length]
+	return true
 }
 
 func (pkt *PktIn) processForward() bool {
