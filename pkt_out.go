@@ -49,12 +49,13 @@ func (pkt *PktOut) Process() bool {
 }
 
 func (pkt *PktOut) fillHeader() bool {
-	var ip IPHeader
-	ip.FromNetwork(pkt.TunBuffer)
-	log.Debug("%+v\n", ip)
+	var ip IPPacket
+	ip.Load(pkt.TunBuffer)
+	ipH := ip.H
+	log.Debug("IP: %v -> %v, IHL: %v, Proto: %v\n", ipH.SrcIP, ipH.DstIP, ipH.IHL, ipH.Protocol)
 
-	if ip.Version != 4 {
-		log.Debug("not support version: %v\n", ip.Version)
+	if ipH.Version != 4 {
+		log.Debug("not support version: %v\n", ipH.Version)
 		return false
 	}
 
@@ -67,15 +68,21 @@ func (pkt *PktOut) fillHeader() bool {
 	h.Random = uint32(rand.Intn(4096))
 	h.SrcID = pkt.Vpn.MyID
 
-	if pkt.Vpn.Network == (ip.SrcIP & NETMASK) {
+	if pkt.Vpn.Network == (ipH.SrcIP & NETMASK) {
 		h.SrcInside = 1
+		if pkt.Vpn.DoNat {
+			ip.Snat(pkt.Vpn.VirtualNet + uint32(h.SrcID))
+		}
 	} else {
 		h.SrcInside = 0
 	}
 
-	if pkt.Vpn.Network == (ip.DstIP & NETMASK) {
+	if pkt.Vpn.Network == (ipH.DstIP & NETMASK) {
 		h.DstInside = 1
-		h.DstID = uint16(ip.DstIP & 0x0000FFFF)
+		h.DstID = uint16(ipH.DstIP & 0x0000FFFF)
+		if pkt.Vpn.DoNat {
+			ip.Dnat(pkt.Vpn.VirtualNet + uint32(h.DstID))
+		}
 	} else {
 		h.DstInside = 0
 		h.DstID = pkt.Vpn.Gateway

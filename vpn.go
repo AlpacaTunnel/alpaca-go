@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -22,6 +23,8 @@ type VPNCtx struct {
 	MyID        uint16
 	Gateway     uint16
 	Network     uint32
+	DoNat       bool
+	VirtualNet  uint32
 	PeerPool    []Peer
 	Forwarders  []uint16
 	AddrLock    sync.Mutex // To avoid creating too many locks, use a global lock
@@ -46,6 +49,11 @@ func (v *VPNCtx) InitCtx() error {
 			continue
 		}
 		v.Forwarders = append(v.Forwarders, IdPton(forwarder))
+	}
+
+	if len(v.Config.VirtualNet) != 0 && !strings.EqualFold(v.Config.VirtualNet, v.Config.Net) {
+		v.DoNat = true
+		v.VirtualNet = uint32(IdPton(v.Config.VirtualNet)) << 16
 	}
 
 	return nil

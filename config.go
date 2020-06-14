@@ -17,6 +17,7 @@ type Config struct {
 	Mode                   string   `json:"mode"`
 	Group                  string   `json:"group"`
 	Net                    string   `json:"net"`
+	VirtualNet             string   `json:"virtual_net"`
 	ID                     string   `json:"id"`
 	Gateway                string   `json:"gateway"`
 	Port                   int      `json:"port"`

@@ -54,6 +54,7 @@ func (pkt *PktIn) Process() bool {
 			return false
 		}
 		pkt.TunBuffer = pkt.InnerBuffer[HEADER_LEN : HEADER_LEN+h.Length]
+		pkt.doNat()
 	}
 
 	// For a forwarder, if the pkt is faked, its src addr is still stored.
@@ -154,4 +155,23 @@ func (pkt *PktIn) chacha20Decrypt() error {
 	}
 
 	return nil
+}
+
+func (pkt *PktIn) doNat() {
+	if !pkt.Vpn.DoNat {
+		return
+	}
+
+	var ip IPPacket
+	ip.Load(pkt.TunBuffer)
+
+	if pkt.H.SrcInside == 1 {
+		ip.Snat(pkt.Vpn.Network + uint32(pkt.H.SrcID))
+	}
+
+	if pkt.H.DstInside == 1 {
+		ip.Dnat(pkt.Vpn.Network + uint32(pkt.H.DstID))
+	}
+
+	log.Debug("IP: %v -> %v, Proto: %v\n", ip.H.SrcIP, ip.H.DstIP, ip.H.Protocol)
 }
