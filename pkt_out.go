@@ -88,9 +88,9 @@ func (pkt *PktOut) fillHeader() bool {
 		h.DstID = pkt.Vpn.Gateway
 	}
 
-	pkt.Vpn.PeerPool[h.DstID].UpdateTimestampSeq()
-	h.Timestamp = pkt.Vpn.PeerPool[h.DstID].Timestamp
-	h.Sequence = pkt.Vpn.PeerPool[h.DstID].Sequence
+	pkt.Vpn.UpdateTimestampSeq()
+	h.Timestamp = pkt.Vpn.Timestamp
+	h.Sequence = pkt.Vpn.Sequence
 
 	log.Debug("%+v\n", h)
 	// log.Debug("dst: %+v\n", pkt.Vpn.PeerPool[h.DstID].Format())

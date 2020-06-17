@@ -1,0 +1,10 @@
+[Unit]
+Description=alpaca-tunnel
+After=network.target network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/alpaca-go
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

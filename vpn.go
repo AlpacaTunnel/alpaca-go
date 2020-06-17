@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -28,6 +29,8 @@ type VPNCtx struct {
 	PeerPool    []Peer
 	Forwarders  []uint16
 	AddrLock    sync.Mutex // To avoid creating too many locks, use a global lock
+	Timestamp   uint32     // use global timestamp/sequence, otherwise pkt through and to a forwarder will conflict.
+	Sequence    uint32
 }
 
 func (v *VPNCtx) InitCtx() error {
@@ -57,6 +60,16 @@ func (v *VPNCtx) InitCtx() error {
 	}
 
 	return nil
+}
+
+func (v *VPNCtx) UpdateTimestampSeq() {
+	now := uint32(time.Now().Unix())
+	if now == v.Timestamp {
+		v.Sequence += 1
+	} else {
+		v.Timestamp = now
+		v.Sequence = 0
+	}
 }
 
 func (v *VPNCtx) AddAddr(srcID uint16, addr *net.UDPAddr) {

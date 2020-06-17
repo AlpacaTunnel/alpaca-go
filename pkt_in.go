@@ -93,7 +93,7 @@ func (pkt *PktIn) isHeaderValid() bool {
 	h := &pkt.H
 
 	if h.Magic != MAGIC {
-		log.Debug("Invalid magic, ignore the packet: (%v -> %v)\n", h.SrcID, h.DstID)
+		log.Debug("Invalid magic, group may mismatch.\n")
 		return false
 	}
 
