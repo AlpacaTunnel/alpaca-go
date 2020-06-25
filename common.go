@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"io/ioutil"
+	"math/big"
 	"math/rand"
+	"net"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -38,6 +40,12 @@ func IdPton(idStr string) uint16 {
 	}
 
 	return uint16(intA*256 + intB)
+}
+
+func InetAton(ip net.IP) uint32 {
+	ipv4Int := big.NewInt(0)
+	ipv4Int.SetBytes(ip.To4())
+	return uint32(ipv4Int.Int64())
 }
 
 func TruncateKey(key string) [AES_BLOCK_SIZE]byte {

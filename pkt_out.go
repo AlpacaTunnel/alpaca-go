@@ -15,6 +15,7 @@ type PktOut struct {
 	Vpn          *VPNCtx
 	Addr         *net.UDPAddr
 	H            Header
+	IP           IPPacket
 	DstAddrs     []*net.UDPAddr
 }
 
@@ -49,7 +50,7 @@ func (pkt *PktOut) Process() bool {
 }
 
 func (pkt *PktOut) fillHeader() bool {
-	var ip IPPacket
+	ip := &pkt.IP
 	ip.Load(pkt.TunBuffer)
 	ipH := ip.H
 	log.Debug("IP: %v -> %v, IHL: %v, Proto: %v\n", ipH.SrcIP, ipH.DstIP, ipH.IHL, ipH.Protocol)
