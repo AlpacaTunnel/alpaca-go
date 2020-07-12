@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"net"
 
+	"github.com/vishvananda/netlink"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -53,12 +54,13 @@ func (pkt *PktOut) fillHeader() bool {
 	ip := &pkt.IP
 	ip.Load(pkt.TunBuffer)
 	ipH := ip.H
-	log.Debug("IP: %v -> %v, IHL: %v, Proto: %v\n", ipH.SrcIP, ipH.DstIP, ipH.IHL, ipH.Protocol)
 
 	if ipH.Version != 4 {
 		log.Debug("not support version: %v\n", ipH.Version)
 		return false
 	}
+
+	log.Debug("IPHeader: %v -> %v, IHL: %v, Proto: %v\n", InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP), ipH.IHL, ipH.Protocol)
 
 	h := &pkt.H
 
@@ -78,15 +80,40 @@ func (pkt *PktOut) fillHeader() bool {
 		h.SrcInside = 0
 	}
 
+	if (pkt.Vpn.Network != (ipH.DstIP & NETMASK)) && (pkt.Vpn.Network != (ipH.SrcIP & NETMASK)) {
+		log.Debug("both src_ip and dst_ip not in tunnel network, ignore the pkt: %v -> %v\n", InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP))
+		return false
+	}
+
 	if pkt.Vpn.Network == (ipH.DstIP & NETMASK) {
 		h.DstInside = 1
 		h.DstID = uint16(ipH.DstIP & 0x0000FFFF)
 		if pkt.Vpn.DoNat {
 			ip.Dnat(pkt.Vpn.VirtualNet + uint32(h.DstID))
 		}
+
 	} else {
+
+		// TODO: bad performance, add cache?
+		routes, err := netlink.RouteGet(InetNtoa(ipH.DstIP))
+		if err != nil {
+			log.Error("failed to get route: %v -> %v, error: %v\n", InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP), err)
+			return false
+		}
+		if len(routes) < 1 {
+			log.Error("empty route found: %v -> %v\n", InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP))
+			return false
+		}
+
+		gwIP := InetAton(routes[0].Gw)
+		if pkt.Vpn.Network != (gwIP & NETMASK) {
+			log.Error("route not in tunnel network: %v -> %v\n", InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP))
+			return false
+		}
+
 		h.DstInside = 0
-		h.DstID = pkt.Vpn.Gateway
+		h.DstID = uint16(gwIP & 0x0000FFFF)
+		log.Debug("%v -> %v, dst ID: %v\n", InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP), h.DstID)
 	}
 
 	pkt.Vpn.UpdateTimestampSeq()

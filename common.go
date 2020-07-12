@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"fmt"
 	"io/ioutil"
 	"math/big"
 	"math/rand"
@@ -46,6 +47,11 @@ func InetAton(ip net.IP) uint32 {
 	ipv4Int := big.NewInt(0)
 	ipv4Int.SetBytes(ip.To4())
 	return uint32(ipv4Int.Int64())
+}
+
+func InetNtoa(ip uint32) net.IP {
+	ipv4 := fmt.Sprintf("%d.%d.%d.%d", byte(ip>>24), byte(ip>>16), byte(ip>>8), byte(ip))
+	return net.ParseIP(ipv4)
 }
 
 func TruncateKey(key string) [AES_BLOCK_SIZE]byte {

@@ -157,6 +157,7 @@ func (s *System) initClient() error {
 			return err
 		}
 	}
+	log.Info("default route changed to tunnel\n")
 
 	return s.chnroute()
 }
