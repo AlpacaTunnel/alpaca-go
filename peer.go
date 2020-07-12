@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	MAX_ID         = 65535
-	MAX_ADDR       = 4
-	CACHE_DURATION = 10
+	MAX_ID              = 65535
+	MAX_ADDR            = 4
+	ADDR_CACHE_DURATION = 10
 )
 
 type Peer struct {
@@ -70,7 +70,7 @@ func (p *Peer) GetAddr(static, inactiveDownwardStatic bool) []*net.UDPAddr {
 
 // Clear inactive addrs, and update cache every 10s
 func (p *Peer) clearPeriodically() {
-	if time.Now().Unix()-p.lastCleared < CACHE_DURATION {
+	if time.Now().Unix()-p.lastCleared < ADDR_CACHE_DURATION {
 		return
 	}
 	p.lastCleared = time.Now().Unix()
