@@ -84,7 +84,7 @@ func (s *System) getDefaultRoute() string {
 }
 
 func (s *System) waitDefaultRoute() {
-	for route := s.getDefaultRoute(); len(route) == 0; {
+	for len(s.getDefaultRoute()) == 0 {
 		log.Warning("No default route yet, wait 1s and try again...\n")
 		time.Sleep(1 * time.Second)
 	}
