@@ -36,6 +36,7 @@ func workerSend(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
 			return
 		default:
 			log.Warning("error read: %T: %v\n", err, err)
+			continue
 		}
 
 		if !pkt.Process() {
@@ -65,6 +66,7 @@ func workerRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
 		length, addr, err := conn.ReadFromUDP(pkt.UdpBuffer)
 		if err != nil {
 			log.Warning("error recv: %v\n", err)
+			continue
 		}
 		pkt.OutterLen = length
 		pkt.SrcAddr = addr
