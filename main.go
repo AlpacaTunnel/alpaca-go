@@ -16,6 +16,16 @@ import (
 
 var log = Logger{}
 
+func hasLoop(pkt *PktOut) bool {
+	for _, addr := range pkt.DstAddrs {
+		if InetAton(addr.IP) == pkt.IP.H.DstIP {
+			log.Error("local route loop: %v\n", addr.IP)
+			return true
+		}
+	}
+	return false
+}
+
 func workerSend(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
 	pkt := PktOut{
 		Vpn: vpn,
@@ -43,11 +53,11 @@ func workerSend(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
 			continue
 		}
 
+		if hasLoop(&pkt) {
+			continue
+		}
+
 		for _, addr := range pkt.DstAddrs {
-			if InetAton(addr.IP) == pkt.IP.H.DstIP {
-				log.Error("local route loop: %v\n", addr.IP)
-				continue
-			}
 			_, err = conn.WriteToUDP(pkt.UdpBuffer, addr)
 			if err != nil {
 				log.Warning("error send: %v\n", err)
