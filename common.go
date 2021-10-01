@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -83,11 +85,11 @@ func DeriveKey(psk, group, nonce []byte) []byte {
 	return key[:]
 }
 
-// Get lines from path, remove lines starts with "#"
+// Get lines from file, remove lines starts with "#".
 func GetLines(path string) ([]string, error) {
 	content, err := ioutil.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, fmt.Sprintf("read lines from file failed: %s", path))
 	}
 	raw_lines := strings.Split(string(content), "\n")
 
@@ -122,7 +124,7 @@ func ExecCmd(cmd string) (string, error) {
 
 	if err != nil {
 		log.Error("Error exec cmd `%v`, %v: (\n%v)\n", cmd, err, output)
-		return output, err
+		return output, errors.Wrap(err, fmt.Sprintf("exec cmd failed: %s", cmd))
 	}
 
 	return output, nil

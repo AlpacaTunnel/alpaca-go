@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"net"
 	"time"
 )
@@ -75,7 +74,7 @@ func (addr *PeerAddr) Equal(other *PeerAddr) bool {
 	if addr == nil || other == nil {
 		return false
 	}
-	if (addr.Version == other.Version) && (addr.Addr.Port == other.Addr.Port) && (bytes.Equal(addr.Addr.IP, other.Addr.IP)) {
+	if (addr.Version == other.Version) && (addr.Addr.Port == other.Addr.Port) && (net.IP.Equal(addr.Addr.IP, other.Addr.IP)) {
 		return true
 	}
 	return false

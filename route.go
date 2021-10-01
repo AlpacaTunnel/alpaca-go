@@ -1,8 +1,10 @@
 package main
 
 import (
-	"errors"
+	"fmt"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/vishvananda/netlink"
 )
@@ -43,8 +45,7 @@ func (t *RouteTableV4) GetRoute(dstIP uint32) (uint32, error) {
 	routes, err := netlink.RouteGet(InetNtoa(dstIP))
 
 	if err != nil {
-		log.Error("netlink failed query %v, error: %v\n", InetNtoa(dstIP), err)
-		return 0, err
+		return 0, errors.Wrap(err, fmt.Sprintf("netlink failed to query %v", InetNtoa(dstIP)))
 	}
 
 	if len(routes) < 1 {

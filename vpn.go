@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -38,7 +40,7 @@ func (v *VPNCtx) InitCtx() error {
 	v.GroupPSK = TruncateKey(v.Config.Group)
 	cipher, err := aes.NewCipher(v.GroupPSK[:])
 	if err != nil {
-		return err
+		return errors.Wrap(err, "new cipher failed")
 	}
 
 	v.GroupCipher = cipher

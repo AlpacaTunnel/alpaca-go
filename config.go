@@ -2,10 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 const DEFAULT_CONFIG = "config.json"
@@ -44,17 +45,17 @@ func GetConfig(path string) (Config, error) {
 
 	file, err := ioutil.ReadFile(path)
 	if err != nil {
-		return c, err
+		return c, errors.Wrap(err, "read config failed")
 	}
 
 	err = json.Unmarshal(file, &c)
 	if err != nil {
-		return c, err
+		return c, errors.Wrap(err, "unmarshal config failed")
 	}
 
 	c.Path, err = filepath.Abs(path)
 	if err != nil {
-		return c, err
+		return c, errors.Wrap(err, "get abs path of config file failed")
 	}
 
 	if c.SecretFile == "" {
@@ -68,11 +69,11 @@ func GetConfig(path string) (Config, error) {
 	}
 
 	if !strings.EqualFold("server", c.Mode) && !strings.EqualFold("client", c.Mode) && !strings.EqualFold("forwarder", c.Mode) {
-		return c, errors.New("Mode can only be server/client/forwarder")
+		return c, errors.New("mode can only be server/client/forwarder")
 	}
 
 	if strings.EqualFold("client", c.Mode) && len(c.Gateway) == 0 {
-		return c, errors.New("Client must have a gateway")
+		return c, errors.New("client must have a gateway")
 	}
 
 	return c, nil

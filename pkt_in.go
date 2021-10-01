@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"net"
 
+	"github.com/pkg/errors"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -31,7 +33,7 @@ func (pkt *PktIn) Init() {
 	pkt.H = Header{}
 }
 
-func (pkt *PktIn) Process() bool {
+func (pkt *PktIn) Process() error {
 	pkt.Vpn.GroupCipher.Decrypt(pkt.InnerBuffer, pkt.UdpBuffer[:HEADER_LEN])
 
 	h := &pkt.H
@@ -39,7 +41,7 @@ func (pkt *PktIn) Process() bool {
 	log.Debug("%+v\n", h)
 
 	if !pkt.isHeaderValid() {
-		return false
+		return errors.New("invalid header")
 	}
 
 	if h.DstID == pkt.Vpn.MyID {
@@ -51,7 +53,7 @@ func (pkt *PktIn) Process() bool {
 	if pkt.Action == ACTION_WRITE {
 		err := pkt.chacha20Decrypt()
 		if err != nil {
-			return false
+			return errors.Wrap(err, "decrypt packet failed")
 		}
 		pkt.TunBuffer = pkt.InnerBuffer[HEADER_LEN : HEADER_LEN+h.Length]
 		pkt.doNat()
@@ -63,22 +65,21 @@ func (pkt *PktIn) Process() bool {
 	pkt.Vpn.AddAddr(h.SrcID, pkt.SrcAddr)
 
 	if pkt.isPktFiltered() {
-		return false
+		return errors.New("packet is filtered")
 	}
 
 	if pkt.Action == ACTION_FORWARD {
 		return pkt.processForward()
 	}
 
-	return true
+	return nil
 }
 
-func (pkt *PktIn) processForward() bool {
+func (pkt *PktIn) processForward() error {
 	h := &pkt.H
 
 	if h.TTL == 0 {
-		log.Error("TTL expired: (%v -> %v)\n", h.SrcID, h.DstID)
-		return false
+		return errors.New(fmt.Sprintf("TTL expired: (%v -> %v)\n", h.SrcID, h.DstID))
 	}
 	h.TTL -= 1
 
@@ -86,7 +87,7 @@ func (pkt *PktIn) processForward() bool {
 	log.Debug("%+v\n", pkt.DstAddrs)
 
 	pkt.Vpn.GroupCipher.Encrypt(pkt.UdpBuffer, h.ToNetwork())
-	return true
+	return nil
 }
 
 func (pkt *PktIn) isHeaderValid() bool {
@@ -150,8 +151,7 @@ func (pkt *PktIn) chacha20Decrypt() error {
 
 	_, err = aead.Open(pkt.InnerBuffer[:HEADER_LEN], nonce, cipherBody, nil)
 	if err != nil {
-		log.Debug("Error open chacha20: %v\n", err)
-		return err
+		return errors.Wrap(err, "open chacha20 failed")
 	}
 
 	return nil
@@ -163,7 +163,9 @@ func (pkt *PktIn) doNat() {
 	}
 
 	var ip IPPacket
-	ip.Load(pkt.TunBuffer)
+	if err := ip.Load(pkt.TunBuffer); err != nil {
+		log.Debug("Load IP failed\n")
+	}
 
 	if pkt.H.SrcInside == 1 {
 		ip.Snat(pkt.Vpn.Network + uint32(pkt.H.SrcID))

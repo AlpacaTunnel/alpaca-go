@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"math/rand"
 	"net"
 
+	"github.com/pkg/errors"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -26,9 +28,9 @@ func (pkt *PktOut) Init() {
 	pkt.TunBuffer = make([]byte, MAX_MTU)
 }
 
-func (pkt *PktOut) Process() bool {
-	if !pkt.fillHeader() {
-		return false
+func (pkt *PktOut) Process() error {
+	if err := pkt.fillHeader(); err != nil {
+		return errors.Wrap(err, "fill header failed")
 	}
 
 	pkt.DstAddrs = pkt.Vpn.GetDstAddrs(pkt.H.SrcID, pkt.H.DstID)
@@ -38,7 +40,7 @@ func (pkt *PktOut) Process() bool {
 
 	bodyLen, err := pkt.chacha20Encrypt()
 	if err != nil {
-		return false
+		return errors.Wrap(err, "encrypt packet failed")
 	}
 
 	obfsLen := ObfsLength(bodyLen)
@@ -46,20 +48,22 @@ func (pkt *PktOut) Process() bool {
 	rand.Read(pkt.OutterBuffer[HEADER_LEN+bodyLen : HEADER_LEN+obfsLen])
 
 	pkt.UdpBuffer = pkt.OutterBuffer[:HEADER_LEN+obfsLen]
-	return true
+	return nil
 }
 
-func (pkt *PktOut) fillHeader() bool {
+func (pkt *PktOut) fillHeader() error {
 	ip := &pkt.IP
-	ip.Load(pkt.TunBuffer)
+	if err := ip.Load(pkt.TunBuffer); err != nil {
+		return errors.Wrap(err, "load tunnel packet failed")
+	}
 	ipH := ip.H
 
 	if ipH.Version != 4 {
-		log.Debug("not support version: %v\n", ipH.Version)
-		return false
+		return errors.New(fmt.Sprintf("not support version: %v\n", ipH.Version))
 	}
 
-	log.Debug("IPHeader: %v -> %v, IHL: %v, Proto: %v\n", InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP), ipH.IHL, ipH.Protocol)
+	log.Debug("IPHeader: %v -> %v, IHL: %v, Proto: %v\n",
+		InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP), ipH.IHL, ipH.Protocol)
 
 	h := &pkt.H
 
@@ -80,8 +84,9 @@ func (pkt *PktOut) fillHeader() bool {
 	}
 
 	if (pkt.Vpn.Network != (ipH.DstIP & NETMASK)) && (pkt.Vpn.Network != (ipH.SrcIP & NETMASK)) {
-		log.Debug("both src_ip and dst_ip not in tunnel network, ignore the pkt: %v -> %v\n", InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP))
-		return false
+		return errors.New(
+			fmt.Sprintf("both src_ip and dst_ip not in tunnel network, ignore the pkt: %v -> %v\n",
+				InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP)))
 	}
 
 	if pkt.Vpn.Network == (ipH.DstIP & NETMASK) {
@@ -93,13 +98,14 @@ func (pkt *PktOut) fillHeader() bool {
 	} else {
 		gwIP, err := pkt.Vpn.TableV4.GetRoute(ipH.DstIP)
 		if err != nil {
-			log.Error("failed to get route: %v -> %v, error: %v\n", InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP), err)
-			return false
+			return errors.Wrap(err,
+				fmt.Sprintf("failed to get route: %v -> %v", InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP)))
 		}
 
 		if pkt.Vpn.Network != (gwIP & NETMASK) {
-			log.Error("route not in tunnel network: %v -> %v\n", InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP))
-			return false
+			return errors.New(
+				fmt.Sprintf("route not in tunnel network: %v -> %v\n",
+					InetNtoa(ipH.SrcIP), InetNtoa(ipH.DstIP)))
 		}
 
 		h.DstInside = 0
@@ -112,9 +118,8 @@ func (pkt *PktOut) fillHeader() bool {
 	h.Sequence = pkt.Vpn.Sequence
 
 	log.Debug("%+v\n", h)
-	// log.Debug("dst: %+v\n", pkt.Vpn.PeerPool[h.DstID].Format())
 
-	return true
+	return nil
 }
 
 func (pkt *PktOut) chacha20Encrypt() (uint16, error) {
@@ -125,8 +130,7 @@ func (pkt *PktOut) chacha20Encrypt() (uint16, error) {
 
 	aead, err := chacha20poly1305.New(key[:])
 	if err != nil {
-		log.Warning("Error new chacha20: %v\n", err)
-		return 0, err
+		return 0, errors.Wrap(err, "new chacha20 failed")
 	}
 
 	aead.Seal(pkt.OutterBuffer[:HEADER_LEN], nonce, pkt.TunBuffer[:pkt.H.Length], nil)

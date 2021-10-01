@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -128,7 +130,7 @@ func (s *System) chnroute() error {
 	cmd := "ip -force -batch " + chnFile
 	log.Info("%v\n", cmd)
 	_, err := ExecCmd(cmd)
-	return err
+	return errors.Wrap(err, "chnroute failed")
 }
 
 func (s *System) chnrouteRestore() {
@@ -154,7 +156,7 @@ func (s *System) initClient() error {
 	for _, cmd := range cmds {
 		_, err := ExecCmd(cmd)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "initClient failed")
 		}
 	}
 	log.Info("default route changed to tunnel\n")
@@ -187,7 +189,7 @@ func (s *System) initServer() error {
 	for _, cmd := range cmds {
 		_, err := ExecCmd(cmd)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "initServer failed")
 		}
 	}
 	return nil
@@ -209,7 +211,7 @@ func (s *System) execPostUp() error {
 	for _, cmd := range s.Conf.PostUpCmds {
 		_, err := ExecCmd(cmd)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "execPostUp failed")
 		}
 	}
 	return nil
@@ -230,7 +232,7 @@ func (s *System) AddIP() error {
 	for _, cmd := range cmds {
 		_, err := ExecCmd(cmd)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "AddIP failed")
 		}
 	}
 	return nil
@@ -244,19 +246,19 @@ func (s *System) Init() error {
 	if !strings.EqualFold(s.Conf.Mode, MODE_FORWARDER) {
 		err = s.AddIP()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "Init system failed")
 		}
 	}
 
 	if strings.EqualFold(s.Conf.Mode, MODE_CLIENT) {
 		err = s.initClient()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "Init system failed")
 		}
 	} else {
 		err := s.initServer()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "Init system failed")
 		}
 	}
 	return s.execPostUp()

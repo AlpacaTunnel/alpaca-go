@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -16,112 +17,6 @@ import (
 
 var log = Logger{}
 
-func hasLoop(pkt *PktOut) bool {
-	for _, addr := range pkt.DstAddrs {
-		if InetAton(addr.IP) == pkt.IP.H.DstIP {
-			log.Error("local route loop: %v\n", addr.IP)
-			return true
-		}
-	}
-	return false
-}
-
-func workerSend(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
-	pkt := PktOut{
-		Vpn: vpn,
-	}
-	pkt.Init()
-
-	var err error
-	for *running {
-		pkt.InnerLen, err = tunFd.Read(pkt.TunBuffer)
-
-		switch err := err.(type) {
-		case nil:
-			// no error
-		case *os.PathError:
-			log.Error("Error read: %T: %v\n", err, err)
-			log.Error("Tunnel interface may have been deleted, exit now.\n")
-			*running = false
-			return
-		default:
-			log.Warning("error read: %T: %v\n", err, err)
-			continue
-		}
-
-		if !pkt.Process() {
-			continue
-		}
-
-		if hasLoop(&pkt) {
-			continue
-		}
-
-		for _, addr := range pkt.DstAddrs {
-			_, err = conn.WriteToUDP(pkt.UdpBuffer, addr)
-			if err != nil {
-				log.Warning("error send: %v\n", err)
-			}
-		}
-	}
-}
-
-func workerRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, running *bool) {
-	pkt := PktIn{
-		Vpn: vpn,
-	}
-	pkt.Init()
-
-	for *running {
-		length, addr, err := conn.ReadFromUDP(pkt.UdpBuffer)
-		if err != nil {
-			log.Warning("error recv: %v\n", err)
-			continue
-		}
-		pkt.OutterLen = length
-		pkt.SrcAddr = addr
-
-		if !pkt.Process() {
-			continue
-		}
-
-		if pkt.Action == ACTION_FORWARD {
-			for _, addr := range pkt.DstAddrs {
-				// TODO: re-encrypt? otherwise bytes data are the same
-				fwdLen := HEADER_LEN + CHACHA20_OVERHEAD + ObfsLength(pkt.H.Length)
-				_, err = conn.WriteToUDP(pkt.UdpBuffer[:fwdLen], addr)
-				if err != nil {
-					log.Warning("error send: %v\n", err)
-				}
-			}
-			continue
-		}
-
-		if strings.EqualFold(pkt.Vpn.Config.Mode, MODE_FORWARDER) {
-			log.Error("Can not write to forwarder.\n")
-			continue
-		}
-
-		_, err = tunFd.Write(pkt.TunBuffer)
-		if err != nil {
-			log.Warning("error write: %v\n", err)
-		}
-	}
-}
-
-func signalHandler(sigCh chan os.Signal, system System, running *bool) {
-	sig := <-sigCh
-	log.Info("Got signal: %v\n", sig)
-	system.Restore()
-	*running = false
-
-	for {
-		sig = <-sigCh
-		log.Info("Got signal: %v\n", sig)
-		*running = false
-	}
-}
-
 func main() {
 	var err error
 	var conn *net.UDPConn
@@ -130,16 +25,14 @@ func main() {
 	var pool []Peer
 	var vpn VPNCtx
 	var system System
-	running := true
 	rand.Seed(time.Now().UnixNano())
 
 	path := flag.String("c", "/usr/local/etc/alpaca-tunnel.d/config.json", "Path to config.json")
 	flag.Parse()
 
-	// path := os.Args[1]
 	conf, err = GetConfig(*path)
 	if err != nil {
-		log.Error("Error get config: %v\n", err)
+		log.Error("Error get config: %+v\n", err)
 		return
 	}
 
@@ -148,7 +41,7 @@ func main() {
 
 	pool, err = GetPeerPool(conf.SecretFile, IdPton(conf.ID))
 	if err != nil {
-		log.Error("Error get pool: %v\n", err)
+		log.Error("Error get pool: %+v\n", err)
 		return
 	}
 	log.Debug(FormatPeerPool(pool))
@@ -159,14 +52,14 @@ func main() {
 	}
 	err = vpn.InitCtx()
 	if err != nil {
-		log.Error("Error init VPN: %v\n", err)
+		log.Error("Error init VPN: %+v\n", err)
 		return
 	}
 
 	if !strings.EqualFold(conf.Mode, MODE_FORWARDER) {
 		conf.Name, tunFd, err = OpenTun(conf.Name)
 		if err != nil {
-			log.Error("Error open: %v\n", err)
+			log.Error("Error open: %+v\n", err)
 			return
 		}
 	}
@@ -178,7 +71,7 @@ func main() {
 
 	conn, err = net.ListenUDP("udp", &localAddr)
 	if err != nil {
-		log.Info("error listen: %v\n", err)
+		log.Info("error listen: %+v\n", err)
 		return
 	}
 
@@ -192,27 +85,142 @@ func main() {
 
 	err = system.Init()
 	if err != nil {
-		log.Error("Init system failed.\n")
+		log.Error("Init system failed: %+v.\n", err)
 		system.Restore()
 		return
 	}
 
-	sigCh := make(chan os.Signal)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	ctx, cancel := context.WithCancel(context.Background())
 
-	go signalHandler(sigCh, system, &running)
+	sigs := make(chan os.Signal)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
+	go func() {
+		sig := <-sigs
+		log.Info("Got signal: %v\n", sig)
+		system.Restore()
+		cancel()
+	}()
 
 	if !strings.EqualFold(conf.Mode, MODE_FORWARDER) {
-		go workerSend(tunFd, conn, &vpn, &running)
+		go workerSend(ctx, tunFd, conn, &vpn)
 	}
 
-	go workerRecv(tunFd, conn, &vpn, &running)
+	go workerRecv(ctx, tunFd, conn, &vpn)
 
 	log.Info("VPN started...\n")
 
-	for running {
-		time.Sleep(time.Second)
-	}
+	<-ctx.Done()
 
 	log.Info("The main progress has ended.\n")
+}
+
+func hasLoop(pkt *PktOut) bool {
+	for _, addr := range pkt.DstAddrs {
+		if InetAton(addr.IP) == pkt.IP.H.DstIP {
+			log.Error("local route loop: %v\n", addr.IP)
+			return true
+		}
+	}
+	return false
+}
+
+func workerSend(ctx context.Context, tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
+	pkt := PktOut{
+		Vpn: vpn,
+	}
+	pkt.Init()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			handleSend(tunFd, conn, vpn, &pkt)
+		}
+	}
+}
+
+func handleSend(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, pkt *PktOut) {
+	var err error
+	pkt.InnerLen, err = tunFd.Read(pkt.TunBuffer)
+
+	switch err := err.(type) {
+	case nil:
+	case *os.PathError:
+		log.Error("Error read: %T: %v\n", err, err)
+		panic("Tunnel interface may have been deleted, exit now.")
+	default:
+		log.Warning("error read: %T: %v\n", err, err)
+		return
+	}
+
+	if err := pkt.Process(); err != nil {
+		log.Debug("Process pakcet failed: %+v\n", err)
+		return
+	}
+
+	if hasLoop(pkt) {
+		return
+	}
+
+	for _, addr := range pkt.DstAddrs {
+		_, err = conn.WriteToUDP(pkt.UdpBuffer, addr)
+		if err != nil {
+			log.Warning("error send: %v\n", err)
+		}
+	}
+}
+
+func workerRecv(ctx context.Context, tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx) {
+	pkt := PktIn{
+		Vpn: vpn,
+	}
+	pkt.Init()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			handleRecv(tunFd, conn, vpn, &pkt)
+		}
+	}
+}
+
+func handleRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, pkt *PktIn) {
+	length, addr, err := conn.ReadFromUDP(pkt.UdpBuffer)
+	if err != nil {
+		log.Warning("error recv: %v\n", err)
+		return
+	}
+	pkt.OutterLen = length
+	pkt.SrcAddr = addr
+
+	if err := pkt.Process(); err != nil {
+		log.Debug("Process pakcet failed: %+v\n", err)
+		return
+	}
+
+	if pkt.Action == ACTION_FORWARD {
+		for _, addr := range pkt.DstAddrs {
+			// TODO: re-encrypt? otherwise bytes data are the same
+			fwdLen := HEADER_LEN + CHACHA20_OVERHEAD + ObfsLength(pkt.H.Length)
+			_, err = conn.WriteToUDP(pkt.UdpBuffer[:fwdLen], addr)
+			if err != nil {
+				log.Warning("error send: %v\n", err)
+			}
+		}
+		return
+	}
+
+	if strings.EqualFold(pkt.Vpn.Config.Mode, MODE_FORWARDER) {
+		log.Error("Can not write to forwarder.\n")
+		return
+	}
+
+	_, err = tunFd.Write(pkt.TunBuffer)
+	if err != nil {
+		log.Warning("error write: %v\n", err)
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )
 
@@ -43,7 +44,7 @@ func createTun(tunFd int, namePattern string) (string, error) {
 
 	err := unix.SetNonblock(tunFd, true)
 	if err != nil {
-		return "", nil
+		return "", errors.Wrap(err, "set tunnel none block failed")
 	}
 
 	tunName := strings.Trim(string(req.Name[:]), "\x00")
@@ -54,13 +55,13 @@ func createTun(tunFd int, namePattern string) (string, error) {
 func OpenTun(namePattern string) (string, *os.File, error) {
 	tunFd, err := unix.Open(cTunDevice, os.O_RDWR, 0)
 	if err != nil {
-		return "", nil, err
+		return "", nil, errors.Wrap(err, "open tunnel failed")
 	}
 
 	tunName, err := createTun(tunFd, namePattern)
 	if err != nil {
 		unix.Close(tunFd)
-		return "", nil, err
+		return "", nil, errors.Wrap(err, "create tunnel failed")
 	}
 
 	fd := os.NewFile(uintptr(tunFd), cTunDevice)

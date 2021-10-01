@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/binary"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -59,10 +61,9 @@ func (h *IPHeader) FromNetwork(data []byte) {
 	h.DstIP = binary.BigEndian.Uint32(data[16:20])
 }
 
-func (ip *IPPacket) Load(data []byte) bool {
+func (ip *IPPacket) Load(data []byte) error {
 	if len(data) <= IPHEADER_LEN_DEFAULT {
-		log.Debug("Invalid IP length\n")
-		return false
+		return errors.New("invalid IP length")
 	}
 
 	ip.Packet = data
@@ -72,8 +73,7 @@ func (ip *IPPacket) Load(data []byte) bool {
 	if ip.H.Protocol == PROTO_UDP {
 
 		if len(data) <= ipHLen+UDPHEADER_LEN {
-			log.Debug("Invalid UDP length\n")
-			return false
+			return errors.New("invalid UDP length")
 		}
 
 		ip.L4 = &UDPHeader{Data: data[ipHLen:]}
@@ -81,8 +81,7 @@ func (ip *IPPacket) Load(data []byte) bool {
 	} else if ip.H.Protocol == PROTO_TCP {
 
 		if len(data) <= ipHLen+TCPHEADER_LEN {
-			log.Debug("Invalid TCP length\n")
-			return false
+			return errors.New("invalid TCP length")
 		}
 
 		ip.L4 = &TCPHeader{Data: data[ipHLen:]}
@@ -91,7 +90,7 @@ func (ip *IPPacket) Load(data []byte) bool {
 		ip.L4 = &EmptyL4Header{}
 	}
 
-	return true
+	return nil
 }
 
 func (ip *IPPacket) Snat(newIP uint32) {

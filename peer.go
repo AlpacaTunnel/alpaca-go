@@ -1,12 +1,13 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -30,7 +31,7 @@ type Peer struct {
 	allActiveAddrs        []*net.UDPAddr
 }
 
-// It should be OK to activate/replace an address without a lock
+// It should be OK to activate/replace an address without a lock.
 func (p *Peer) AddAddr(newAddr *PeerAddr) bool {
 	for _, addr := range p.Addrs {
 		if addr.Equal(newAddr) {
@@ -68,7 +69,7 @@ func (p *Peer) GetAddr(static, inactiveDownwardStatic bool) []*net.UDPAddr {
 	return p.allStaticDynamicAddrs
 }
 
-// Clear inactive addrs, and update cache every 10s
+// Clear inactive addrs, and update cache every 10s.
 func (p *Peer) clearPeriodically() {
 	if time.Now().Unix()-p.lastCleared < ADDR_CACHE_DURATION {
 		return
@@ -114,7 +115,7 @@ func GetPeerPool(path string, myID uint16) ([]Peer, error) {
 
 	lines, err := GetLines(path)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "get peer pool failed")
 	}
 
 	for _, line := range lines {
@@ -133,7 +134,7 @@ func GetPeerPool(path string, myID uint16) ([]Peer, error) {
 	}
 
 	if pool[myID].ID == 0 {
-		return pool, errors.New("Self ID not included in secrets")
+		return pool, errors.New("self ID missing in secrets")
 	}
 
 	return pool, nil
@@ -160,9 +161,9 @@ func (p *Peer) Format() string {
 			continue
 		}
 		if addr.Static {
-			output += fmt.Sprintf("Static-")
+			output += "Static-"
 		} else {
-			output += fmt.Sprintf("Dynamic-")
+			output += "Dynamic-"
 		}
 		output += fmt.Sprintf("%v:%v ", addr.Addr.IP, addr.Addr.Port)
 	}
