@@ -91,6 +91,7 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	ctxMain, cancelMain := context.WithCancel(context.Background())
 
 	sigs := make(chan os.Signal)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
@@ -98,8 +99,9 @@ func main() {
 	go func() {
 		sig := <-sigs
 		log.Info("Got signal: %v\n", sig)
-		system.Restore()
 		cancel()
+		system.Restore()
+		cancelMain()
 	}()
 
 	if !strings.EqualFold(conf.Mode, MODE_FORWARDER) {
@@ -108,9 +110,11 @@ func main() {
 
 	go workerRecv(ctx, tunFd, conn, &vpn)
 
+	go workerMoniterRoute(ctx, system)
+
 	log.Info("VPN started...\n")
 
-	<-ctx.Done()
+	<-ctxMain.Done()
 
 	log.Info("The main progress has ended.\n")
 }
@@ -222,5 +226,19 @@ func handleRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, pkt *PktIn) {
 	_, err = tunFd.Write(pkt.TunBuffer)
 	if err != nil {
 		log.Warning("error write: %v\n", err)
+	}
+}
+
+func workerMoniterRoute(ctx context.Context, system System) {
+	time.Sleep(10 * time.Second)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(1 * time.Second):
+			if system.HasDefaultRoute() {
+				system.ReRouteToTunnel()
+			}
+		}
 	}
 }
