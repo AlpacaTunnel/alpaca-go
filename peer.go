@@ -177,6 +177,10 @@ func (p *Peer) Format() string {
 }
 
 func getPeer(line string, myID uint16) *Peer {
+	if strings.Index(line, "#") > -1 {
+		line = line[:strings.Index(line, "#")]
+	}
+
 	fields := strings.Fields(line)
 	if len(fields) < 2 {
 		return nil

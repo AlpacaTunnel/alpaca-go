@@ -110,7 +110,9 @@ func main() {
 
 	go workerRecv(ctx, tunFd, conn, &vpn)
 
-	go workerMoniterRoute(ctx, system)
+	if strings.EqualFold(conf.Mode, MODE_CLIENT) {
+		go workerMoniterRoute(ctx, system)
+	}
 
 	log.Info("VPN started...\n")
 

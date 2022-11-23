@@ -49,7 +49,7 @@ func (s *System) getRoutesToTunnel() []string {
 	defaultRoute := fmt.Sprintf("ip route add default via %v table default", s.Gateway)
 	cmds = append(cmds, defaultRoute)
 
-	return cmds
+	return UniqStr(cmds)
 }
 
 func (s *System) getRoutesToLocal() []string {
@@ -74,7 +74,7 @@ func (s *System) getRoutesToLocal() []string {
 
 	cmds = append(cmds, "ip route delete default table default")
 
-	return cmds
+	return UniqStr(cmds)
 }
 
 func (s *System) getDefaultRoutes() []string {
@@ -290,6 +290,9 @@ func (s *System) HasDefaultRoute() bool {
 }
 
 func (s *System) ReRouteToTunnel() {
+	if !strings.EqualFold(s.Conf.Mode, MODE_CLIENT) {
+		return
+	}
 	log.Info("reroute default route to tunnel\n")
 
 	for _, cmd := range s.getRoutesToLocal() {
