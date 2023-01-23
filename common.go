@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"math/rand"
 	"net"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -87,7 +87,7 @@ func DeriveKey(psk, group, nonce []byte) []byte {
 
 // Get lines from file, remove lines starts with "#".
 func GetLines(path string) ([]string, error) {
-	content, err := ioutil.ReadFile(path)
+	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, errors.Wrap(err, fmt.Sprintf("read lines from file failed: %s", path))
 	}

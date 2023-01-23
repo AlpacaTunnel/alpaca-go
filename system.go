@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -134,7 +134,7 @@ func (s *System) getChnrouteFile(action string) string {
 
 	tmpFile := "/tmp/chnroute-" + action + "-1984"
 
-	err = ioutil.WriteFile(tmpFile, []byte(data), 0644)
+	err = os.WriteFile(tmpFile, []byte(data), 0644)
 	if err != nil {
 		log.Warning("Error write temp Chnroute script: %v: %v\n", tmpFile, err)
 		return ""

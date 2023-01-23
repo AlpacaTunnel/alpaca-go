@@ -177,7 +177,7 @@ func (p *Peer) Format() string {
 }
 
 func getPeer(line string, myID uint16) *Peer {
-	if strings.Index(line, "#") > -1 {
+	if strings.Contains(line, "#") {
 		line = line[:strings.Index(line, "#")]
 	}
 

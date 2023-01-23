@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -43,7 +43,7 @@ type Chnroute struct {
 func GetConfig(path string) (Config, error) {
 	var c Config
 
-	file, err := ioutil.ReadFile(path)
+	file, err := os.ReadFile(path)
 	if err != nil {
 		return c, errors.Wrap(err, "read config failed")
 	}

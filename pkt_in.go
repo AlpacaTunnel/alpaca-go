@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 
@@ -125,7 +124,7 @@ func (pkt *PktIn) isPktFiltered() bool {
 func (pkt *PktIn) getDstAddrs() []*net.UDPAddr {
 	dstAddrs := make([]*net.UDPAddr, 0, MAX_ADDR*2)
 	for _, addr := range pkt.Vpn.GetDstAddrs(pkt.H.SrcID, pkt.H.DstID) {
-		if bytes.Equal(addr.IP, pkt.SrcAddr.IP) {
+		if net.IP.Equal(addr.IP, pkt.SrcAddr.IP) {
 			// split horizon
 			log.Debug("Can not resend to the receiving address.\n")
 		} else {
