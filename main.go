@@ -233,13 +233,18 @@ func handleRecv(tunFd *os.File, conn *net.UDPConn, vpn *VPNCtx, pkt *PktIn) {
 
 func workerMoniterRoute(ctx context.Context, system System) {
 	time.Sleep(10 * time.Second)
+	interval := time.Second
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(1 * time.Second):
+		case <-time.After(interval):
 			if system.HasDefaultRoute() {
 				system.ReRouteToTunnel()
+				// avoid conflict with network-manager dhcp client
+				interval = 10 * time.Second
+			} else {
+				interval = time.Second
 			}
 		}
 	}

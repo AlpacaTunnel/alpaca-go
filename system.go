@@ -20,16 +20,13 @@ const (
 type System struct {
 	Conf        Config
 	PeerPool    []Peer
-	DefautRoute string
-	MyIP        string
-	Gateway     string
+	DefautRoute string // system local default route
+	MyIP        string // vpn tunnel IP
+	Gateway     string // vpn tunnel gateway
 }
 
-func (s *System) getRoutesToTunnel() []string {
+func (s *System) addRoutesInDefaultTable() []string {
 	var cmds []string
-	for range s.getDefaultRoutes() {
-		cmds = append(cmds, "ip route delete default")
-	}
 
 	for _, peer := range s.PeerPool {
 		if peer.ID == 0 {
@@ -52,10 +49,8 @@ func (s *System) getRoutesToTunnel() []string {
 	return UniqStr(cmds)
 }
 
-func (s *System) getRoutesToLocal() []string {
+func (s *System) delRoutesInDefaultTable() []string {
 	var cmds []string
-	defaultRoute := fmt.Sprintf("ip route add default via %v", s.DefautRoute)
-	cmds = append(cmds, defaultRoute)
 
 	for _, peer := range s.PeerPool {
 		if peer.ID == 0 {
@@ -77,6 +72,19 @@ func (s *System) getRoutesToLocal() []string {
 	return UniqStr(cmds)
 }
 
+func (s *System) delDefaultRoute() []string {
+	var cmds []string
+	for range s.getDefaultRoutes() {
+		cmds = append(cmds, "ip route delete default")
+	}
+	return cmds
+}
+
+func (s *System) addDefaultRoute() []string {
+	cmd := fmt.Sprintf("ip route add default via %v", s.DefautRoute)
+	return []string{cmd}
+}
+
 func (s *System) getDefaultRoutes() []string {
 	var routes []string
 	output, _ := ExecCmd("ip route show default")
@@ -95,7 +103,16 @@ func (s *System) waitDefaultRoute() {
 		log.Warning("No default route yet, wait 1s and try again...\n")
 		time.Sleep(1 * time.Second)
 	}
-	s.DefautRoute = s.getDefaultRoutes()[0]
+}
+
+func (s *System) withDefaultRoute(routes []string) {
+	if len(routes) != 0 {
+		s.DefautRoute = routes[0]
+	}
+}
+
+func (s *System) HasDefaultRoute() bool {
+	return len(s.getDefaultRoutes()) != 0
 }
 
 func (s *System) getChnrouteFile(action string) string {
@@ -151,7 +168,10 @@ func (s *System) chnrouteRestore() {
 
 func (s *System) initClient() error {
 	s.waitDefaultRoute()
-	cmds := s.getRoutesToTunnel()
+	s.withDefaultRoute(s.getDefaultRoutes())
+
+	cmds := s.delDefaultRoute()
+	cmds = append(cmds, s.addRoutesInDefaultTable()...)
 
 	cmds = append(cmds, "sysctl net.ipv4.ip_forward=1")
 	cmds = append(cmds, fmt.Sprintf("iptables -A FORWARD -s %v.0.0/16 -j ACCEPT", s.Conf.Net))
@@ -170,7 +190,8 @@ func (s *System) initClient() error {
 }
 
 func (s *System) restoreClient() {
-	cmds := s.getRoutesToLocal()
+	cmds := s.addDefaultRoute()
+	cmds = append(cmds, s.delRoutesInDefaultTable()...)
 
 	cmds = append(cmds, fmt.Sprintf("iptables -D FORWARD -s %v.0.0/16 -j ACCEPT", s.Conf.Net))
 	cmds = append(cmds, fmt.Sprintf("iptables -D FORWARD -d %v.0.0/16 -j ACCEPT", s.Conf.Net))
@@ -279,28 +300,26 @@ func (s *System) Restore() {
 	s.execPostDown()
 }
 
-func (s *System) HasDefaultRoute() bool {
-	defaultRoute := s.getDefaultRoutes()
-	if len(defaultRoute) == 0 {
-		return false
-	}
-
-	s.DefautRoute = defaultRoute[0]
-	return true
-}
-
 func (s *System) ReRouteToTunnel() {
 	if !strings.EqualFold(s.Conf.Mode, MODE_CLIENT) {
 		return
 	}
-	log.Info("reroute default route to tunnel\n")
 
-	for _, cmd := range s.getRoutesToLocal() {
+	defaultRoutes := s.getDefaultRoutes()
+
+	log.Info("reroute default route to tunnel\n")
+	for _, cmd := range s.delDefaultRoute() {
+		ExecCmd(cmd)
+	}
+
+	for _, cmd := range s.delRoutesInDefaultTable() {
 		ExecCmd(cmd)
 	}
 	s.chnrouteRestore()
 
-	for _, cmd := range s.getRoutesToTunnel() {
+	s.withDefaultRoute(defaultRoutes)
+
+	for _, cmd := range s.addRoutesInDefaultTable() {
 		_, err := ExecCmd(cmd)
 		if err != nil {
 			log.Error("change route failed: %s", err)
